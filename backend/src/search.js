@@ -18,8 +18,29 @@ let embeddingsBuffer = null;
  */
 function loadEmbeddings() {
   console.log('[search] Loading metadata...');
+
+  if (!fs.existsSync(METADATA_PATH)) {
+    throw new Error(`Metadata file not found: ${METADATA_PATH}`);
+  }
+  if (!fs.existsSync(EMBEDDINGS_PATH)) {
+    throw new Error(`Embeddings file not found: ${EMBEDDINGS_PATH}`);
+  }
+
   const metaRaw = fs.readFileSync(METADATA_PATH, 'utf-8');
-  const meta = JSON.parse(metaRaw);
+  let meta;
+  try {
+    meta = JSON.parse(metaRaw);
+  } catch (e) {
+    throw new Error(`Failed to parse metadata JSON: ${e.message}`);
+  }
+
+  if (!meta.ids || !meta.documents || !meta.metadatas || !meta.count || !meta.dim) {
+    throw new Error('Metadata JSON missing required fields (ids, documents, metadatas, count, dim)');
+  }
+  if (meta.ids.length !== meta.count || meta.documents.length !== meta.count || meta.metadatas.length !== meta.count) {
+    throw new Error('Metadata array lengths do not match count field');
+  }
+
   ids = meta.ids;
   documents = meta.documents;
   metadatas = meta.metadatas;
@@ -43,7 +64,7 @@ function loadEmbeddings() {
  * Search for top-K most similar embeddings to the query.
  * Uses direct buffer reads for performance (avoids creating intermediate arrays).
  * @param {number[]} queryEmbedding - 384-dimension normalized vector
- * @param {number} topK - number of results to return
+ * @param {number} topK - number of results to return (1-100)
  * @returns {Array<{id: string, document: string, metadata: object, similarity: number}>}
  */
 function search(queryEmbedding, topK = 5) {
@@ -51,39 +72,39 @@ function search(queryEmbedding, topK = 5) {
     throw new Error('Embeddings not loaded. Call loadEmbeddings() first.');
   }
 
-  if (queryEmbedding.length !== embeddingDim) {
+  if (!Array.isArray(queryEmbedding) || queryEmbedding.length !== embeddingDim) {
     throw new Error(
-      `Query embedding dimension mismatch: expected ${embeddingDim}, got ${queryEmbedding.length}`
+      `Query embedding must be an array of length ${embeddingDim}, got ${Array.isArray(queryEmbedding) ? queryEmbedding.length : typeof queryEmbedding}`
     );
   }
 
-  // Compute similarities using direct buffer reads (avoid creating arrays)
-  const similarities = new Float32Array(embeddingCount);
+  // Clamp topK to valid range
+  topK = Math.max(1, Math.min(topK, 100));
+
+  // Compute similarities and track top-K in one pass
+  // Use a simple array of size topK, kept sorted ascending (min at index 0)
+  const topResults = []; // { index, similarity }
+
   for (let i = 0; i < embeddingCount; i++) {
     const offset = i * embeddingDim * 4;
     let dot = 0;
     for (let j = 0; j < embeddingDim; j++) {
       dot += queryEmbedding[j] * embeddingsBuffer.readFloatLE(offset + j * 4);
     }
-    similarities[i] = dot;
-  }
 
-  // Find top-K using partial sort (min-heap approach for efficiency)
-  const topResults = [];
-  for (let i = 0; i < embeddingCount; i++) {
-    const sim = similarities[i];
     if (topResults.length < topK) {
-      topResults.push({ index: i, similarity: sim });
+      topResults.push({ index: i, similarity: dot });
       if (topResults.length === topK) {
         topResults.sort((a, b) => a.similarity - b.similarity);
       }
-    } else if (sim > topResults[0].similarity) {
-      topResults[0] = { index: i, similarity: sim };
+    } else if (dot > topResults[0].similarity) {
+      topResults[0] = { index: i, similarity: dot };
+      // Re-sort to maintain min-heap property
       topResults.sort((a, b) => a.similarity - b.similarity);
     }
   }
 
-  // Sort descending
+  // Sort descending for output
   topResults.sort((a, b) => b.similarity - a.similarity);
 
   return topResults.map((r) => ({

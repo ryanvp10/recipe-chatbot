@@ -8,13 +8,14 @@ dotenv.config();
 const { generateRecipeReply, embeddingsReady } = require('./rag');
 
 const app = express();
-const port = Number(process.env.PORT) || 3001;
+const port = Number.parseInt(process.env.PORT, 10) || 3001;
 
 const allowedOrigins = (
   process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000'
 )
   .split(',')
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
@@ -25,6 +26,9 @@ app.use(
 );
 
 app.use(express.json({ limit: '1mb' }));
+
+// Trust proxy for correct client IP behind reverse proxies (Railway, etc.)
+app.set('trust proxy', 1);
 
 const chatLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -46,15 +50,27 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
   try {
     const { message, history } = req.body;
 
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Message is required.' });
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Message is required and must be a non-empty string.' });
+    }
+
+    if (message.length > 2000) {
+      return res.status(400).json({ error: 'Message too long. Maximum 2000 characters.' });
+    }
+
+    if (history !== undefined && !Array.isArray(history)) {
+      return res.status(400).json({ error: 'History must be an array if provided.' });
+    }
+
+    if (history && history.length > 20) {
+      return res.status(400).json({ error: 'History too long. Maximum 20 messages.' });
     }
 
     if (!embeddingsReady()) {
       return res.status(503).json({ error: 'Service initializing, please try again in a moment.' });
     }
 
-    const result = await generateRecipeReply(message, history);
+    const result = await generateRecipeReply(message.trim(), history);
     res.json(result);
   } catch (error) {
     console.error('[server] Chat error:', error);
@@ -64,7 +80,9 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
 
 app.use((err, _req, res, _next) => {
   console.error('[server] Unhandled Express error:', err);
-  res.status(500).json({ error: 'Internal server error.' });
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error.' });
+  }
 });
 
 const server = app.listen(port, () => {
