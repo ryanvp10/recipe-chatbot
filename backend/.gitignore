@@ -2,3 +2,7 @@ node_modules/
 chroma_data/
 .env
 data/
+embeddings.pkl
+embeddings.json
+embeddings_data/
+scripts/

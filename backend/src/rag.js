@@ -1,16 +1,17 @@
 const dotenv = require('dotenv');
 const fetch = require('node-fetch');
-const { ChromaClient } = require('chromadb');
-const { embedTexts, COLLECTION_NAME, CHROMA_URL } = require('./ingest');
+const { pipeline } = require('@xenova/transformers');
+const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL_NAME = 'google/gemini-2.0-flash-free';
-const SYSTEM_PROMPT = 'You are ResepAI, a helpful Indonesian recipe assistant. Answer in the same language as the user (Bahasa Indonesia or English). Use the provided recipe context to answer. If context is low confidence, say you are providing general cooking advice, not from the database.';
+const SYSTEM_PROMPT =
+  'You are ResepAI, a helpful Indonesian recipe assistant. Answer in the same language as the user (Bahasa Indonesia or English). Use the provided recipe context to answer. If context is low confidence, say you are providing general cooking advice, not from the database.';
 const MAX_HISTORY_MESSAGES = 20;
 
-let collectionPromise;
+let extractorPromise;
 
 function log(...args) {
   console.log('[rag]', ...args);
@@ -20,50 +21,49 @@ function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
 
   return history
-    .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
+    .filter(
+      (item) =>
+        item &&
+        (item.role === 'user' || item.role === 'assistant') &&
+        typeof item.content === 'string'
+    )
     .slice(-MAX_HISTORY_MESSAGES)
-    .map((item) => ({ role: item.role, content: item.content.trim().slice(0, 2000) }));
+    .map((item) => ({
+      role: item.role,
+      content: item.content.trim().slice(0, 2000),
+    }));
 }
 
-async function getCollection() {
-  if (!collectionPromise) {
-    const client = new ChromaClient({ url: CHROMA_URL });
-    collectionPromise = client.getOrCreateCollection({ name: COLLECTION_NAME });
+async function getEmbeddingPipeline() {
+  if (!extractorPromise) {
+    extractorPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   }
-  return collectionPromise;
+  return extractorPromise;
+}
+
+async function embedQuery(text) {
+  const extractor = await getEmbeddingPipeline();
+  const output = await extractor(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data);
 }
 
 async function retrieveContext(query) {
-  const collection = await getCollection();
-  const queryEmbedding = await embedTexts([query]).then(([emb]) => emb);
+  const queryEmbedding = await embedQuery(query);
+  const results = search(queryEmbedding, 5);
 
-  const results = await collection.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults: 5,
-    include: ['documents', 'metadatas', 'distances'],
-  });
-
-  const sources = [];
   const contextBlocks = [];
+  const sources = [];
   let lowConfidence = true;
 
-  const docs = results.documents?.[0] || [];
-  const metas = results.metadatas?.[0] || [];
-  const dists = results.distances?.[0] || [];
-
-  for (let i = 0; i < docs.length; i++) {
-    const distance = Number.isFinite(dists[i]) ? dists[i] : 1;
-    // ChromaDB uses distance (lower = more similar), convert to similarity
-    const similarity = 1 - distance;
-    if (similarity >= 0.5) {
+  for (const r of results) {
+    if (r.similarity >= 0.5) {
       lowConfidence = false;
     }
-
-    contextBlocks.push(`Similarity: ${similarity.toFixed(2)}\n${docs[i]}`);
+    contextBlocks.push(`Similarity: ${r.similarity.toFixed(2)}\n${r.document}`);
     sources.push({
-      title: metas[i]?.title || 'Unknown recipe',
-      num_ingredients: metas[i]?.num_ingredients || 0,
-      num_steps: metas[i]?.num_steps || 0,
+      title: r.metadata?.title || 'Unknown recipe',
+      num_ingredients: r.metadata?.num_ingredients || 0,
+      num_steps: r.metadata?.num_steps || 0,
     });
   }
 
@@ -113,6 +113,7 @@ async function callOpenRouter(messages) {
 async function generateRecipeReply(message, history = []) {
   const safeHistory = sanitizeHistory(history);
   const { context, sources, lowConfidence } = await retrieveContext(message);
+
   const systemContent = [
     SYSTEM_PROMPT,
     lowConfidence
@@ -132,6 +133,18 @@ async function generateRecipeReply(message, history = []) {
   return { reply, sources, lowConfidence };
 }
 
+// Load embeddings on module load
+let embeddingsReady = false;
+loadEmbeddings()
+  .then(() => {
+    embeddingsReady = true;
+    log(`Embeddings ready. ${getEmbeddingCount()} recipes loaded.`);
+  })
+  .catch((err) => {
+    console.error('[rag] Failed to load embeddings:', err);
+  });
+
 module.exports = {
   generateRecipeReply,
+  embeddingsReady: () => embeddingsReady,
 };
