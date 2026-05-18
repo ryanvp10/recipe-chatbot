@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { FiMoon, FiSend, FiSun } from 'react-icons/fi'
 import { GiChefToque } from 'react-icons/gi'
 
@@ -81,7 +82,7 @@ function MessageBubble({ message }) {
       <div className="message-content">
         <div className="message-text">
           {isUser ? message.content : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
               {message.content}
             </ReactMarkdown>
           )}
