@@ -180,18 +180,20 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   const safeHistory = sanitizeHistory(history);
 
   if (!confirmed) {
-    // Discussion mode: use a completely different prompt that never mentions recipes
-    const discussionSystemPrompt = 'You are ResepAI, a friendly Indonesian cooking buddy. Match the user\'s language (Bahasa Indonesia or English). You are having a casual conversation about cooking. Do NOT give any recipe, ingredients, cooking steps, or measurements. ONLY ask one friendly clarifying question at a time to understand what the user wants to cook. Question order: what variant/type → what ingredients they have → how many portions → cooking time preference. Keep it short, warm, and casual. Use "kamu". Occasional emoji is fine. Share fun food facts when relevant (e.g., Nasi liwet from Solo, Rendang from West Sumatra, Sate Madura from Madura island). If the user says they are ready (e.g., "sudah", "gas", "langsung aja", "cukup", "skip", "ready", "yes", "oke", "siap"), respond warmly and let them know you\'ll prepare the recipe. Stay strictly on cooking/food topics.';
+    // Discussion mode: act as a restaurant helper taking orders
+    const discussionSystemPrompt = 'You are ResepAI, a friendly Indonesian cooking buddy. Match the user\'s language (Bahasa Indonesia or English). You are helping the user decide what to cook. Your job is to ask friendly questions to understand what they want. Do NOT provide any recipe, ingredients, cooking steps, or measurements — that comes later when the user confirms they are ready. Only ask ONE short friendly question per response. Question order: what variant/type they want → what ingredients they have → how many portions → cooking time preference. Keep responses very short (2-3 sentences max). Use "kamu", casual tone, occasional emoji. Share fun food facts when relevant (e.g., Nasi liwet from Solo, Rendang from West Sumatra, Sate Madura from Madura island). If user says they are ready (e.g., "sudah", "gas", "langsung aja", "cukup", "skip", "ready", "yes", "oke", "siap"), respond warmly like "Oke siap! Siapin resepnya ya..." but still do NOT give the recipe — the system will handle that in the next turn. Stay strictly on cooking/food topics only. If asked about non-cooking topics, redirect: "Maaf, saya hanya bisa membantu soal masak-masak dan resep. Ada yang bisa dibantu soal makanan? 😊"';
 
     const messages = [
       { role: 'system', content: discussionSystemPrompt },
       ...safeHistory,
-      { role: 'user', content: message.slice(0, MAX_MESSAGE_LENGTH) },
+      { role: 'user', content: `User message: ${message.slice(0, MAX_MESSAGE_LENGTH)}` },
     ];
 
     log('Discussion mode: asking clarifying question');
     const reply = await callLLM(messages);
-    return { reply, sources: [], lowConfidence: true };
+    // Clean up any recipe-like content that LLM might have added
+    const cleanReply = reply.replace(/##.*?$/gm, '').replace(/###.*?$/gm, '').replace(/\*\*Bahan:\*\*.*$/gm, '').replace(/\*\*Cara.*$/gm, '').trim() || reply;
+    return { reply: cleanReply, sources: [], lowConfidence: true };
   }
 
   // Recipe mode: retrieve context and give full recipe
