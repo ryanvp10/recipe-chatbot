@@ -241,7 +241,10 @@ export default function App() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 120000)
 
-      const res = await fetch(`${API_URL}/chat`, {
+      const chatUrl = `${API_URL}/chat`
+      console.log('Fetching:', chatUrl)
+
+      const res = await fetch(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, sessionId, history }),
@@ -253,7 +256,7 @@ export default function App() {
       if (!res.ok) {
         const errText = await res.text()
         console.error('API error:', res.status, errText)
-        throw new Error('API error ' + res.status + ': ' + errText)
+        throw new Error('API error ' + res.status + ' at ' + chatUrl + ': ' + errText)
       }
 
       const data = await res.json()
