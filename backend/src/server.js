@@ -61,7 +61,7 @@ app.get('/api/health', (_req, res) => {
 
 app.post('/api/chat', chatLimiter, async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, confirmed } = req.body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Message is required and must be a non-empty string.' });
@@ -83,7 +83,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       return res.status(503).json({ error: 'Service initializing, please try again in a moment.' });
     }
 
-    const result = await generateRecipeReply(message.trim(), history);
+    const result = await generateRecipeReply(message.trim(), history, confirmed === true);
     res.json(result);
   } catch (error) {
     console.error('[server] Chat error:', error);

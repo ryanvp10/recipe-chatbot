@@ -244,10 +244,14 @@ export default function App() {
       const chatUrl = `${API_URL}/chat`
       console.log('Fetching:', chatUrl)
 
+      // Detect if user is ready for the recipe
+      const readySignals = ['sudah', 'langsung aja', 'cukup', 'skip', 'gas', 'ready', 'yes', 'yup', 'oke', 'ok', 'siap', 'langsung']
+      const isReady = readySignals.some(s => text.toLowerCase().trim().includes(s))
+
       const res = await fetch(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, history }),
+        body: JSON.stringify({ message: text, sessionId, history, confirmed: isReady }),
         signal: controller.signal,
       })
 
