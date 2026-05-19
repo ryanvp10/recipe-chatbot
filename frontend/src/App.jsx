@@ -230,7 +230,9 @@ export default function App() {
 
       // Wake up the server (free tier may be sleeping)
       try {
-        await fetch(`${API_URL}/health`, { method: 'GET', signal: AbortSignal.timeout(15000) })
+        const healthCtrl = new AbortController()
+        setTimeout(() => healthCtrl.abort(), 15000)
+        await fetch(`${API_URL}/health`, { method: 'GET', signal: healthCtrl.signal })
       } catch {
         // Server might still be waking up, wait a bit
         await new Promise(r => setTimeout(r, 5000))
