@@ -180,15 +180,27 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   const safeHistory = sanitizeHistory(history);
 
   if (!confirmed) {
-    // Discussion mode: short response, no recipe context, instruction in user message
+    // Discussion mode: completely different persona, no recipe mentions at all
+    const chatPrompt = `You are a friendly Indonesian cooking enthusiast chatbot. You are chatting with a user about what they want to cook. Your job is to have a friendly conversation and ask questions to help them decide.
+
+Rules:
+- Keep responses VERY SHORT (max 2-3 sentences)
+- Ask only ONE question per response
+- Do NOT list ingredients, steps, measurements, or recipes
+- Be casual and warm, use "kamu"
+- Question order: what type/variant → what ingredients they have → how many people → time available
+- If user says they're ready ("sudah", "gas", "skip", "siap", "ready", "langsung aja", "cukup"), respond warmly: "Oke, siapin resepnya ya! 🍳"
+- Match user's language (Bahasa Indonesia or English)
+- Stay on cooking/food topics only`;
+
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...safeHistory,
-      { role: 'user', content: `[INTERNAL INSTRUCTION: You are in DISCUSSION MODE. Do NOT give any recipe, ingredients, cooking steps, or measurements. ONLY respond with 2-3 sentences: a brief friendly acknowledgment and ONE clarifying question. Keep it casual and short. If user says "sudah/gas/skip/siap/ready" respond warmly but still do NOT give the recipe.]\n\nUser message: ${message.slice(0, MAX_MESSAGE_LENGTH)}` },
+      { role: 'system', content: chatPrompt },
+      ...safeHistory.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message.slice(0, MAX_MESSAGE_LENGTH) },
     ];
 
-    log('Discussion mode: asking clarifying question');
-    const reply = await callLLM(messages, 150);
+    log('Discussion mode: chatting');
+    const reply = await callLLM(messages, 200);
     return { reply, sources: [], lowConfidence: true };
   }
 
