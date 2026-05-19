@@ -6,7 +6,7 @@ dotenv.config();
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'google/gemini-2.0-flash-free';
+const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
 const SYSTEM_PROMPT =
   'You are ResepAI, a helpful Indonesian recipe assistant. Answer in the same language as the user (Bahasa Indonesia or English). Use the provided recipe context to answer. If context is low confidence, say you are providing general cooking advice, not from the database.';
 const MAX_HISTORY_MESSAGES = 20;
