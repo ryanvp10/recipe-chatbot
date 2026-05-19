@@ -200,7 +200,28 @@ Rules:
     ];
 
     log('Discussion mode: chatting');
-    const reply = await callLLM(messages, 200);
+    let reply = await callLLM(messages, 200);
+
+    // Post-process: strip any recipe content that LLM might have added
+    const lowerReply = reply.toLowerCase();
+    const cutPoints = [
+      'berikut resep', 'berikut ini', 'berikut adalah', 'ini resep', 'ini dia resep',
+      '## ', '### ', '**bahan', '**cara', '**langkah', '**steps', '**ingredients', '**tips',
+      'bahan:', 'cara membuat:', 'langkah:', '1. ', '2. ',
+    ];
+    for (const marker of cutPoints) {
+      const idx = lowerReply.indexOf(marker);
+      if (idx >= 0) {
+        reply = reply.substring(0, idx).trim();
+        break;
+      }
+    }
+
+    // Fallback if reply is too short after cleanup
+    if (reply.length < 15) {
+      reply = `Oke! ${message} ya? Mau yang gimana? Yang simpel atau yang lengkap? 😊`;
+    }
+
     return { reply, sources: [], lowConfidence: true };
   }
 
