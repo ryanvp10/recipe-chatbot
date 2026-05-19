@@ -4,15 +4,15 @@ const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const LLM_URL = 'https://api.freemodel.dev/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
+const MODEL_NAME = 'gpt-5.4';
 const SYSTEM_PROMPT =
   'You are ResepAI, a helpful Indonesian recipe assistant. Answer in the same language as the user (Bahasa Indonesia or English). Use the provided recipe context to answer. If context is low confidence, say you are providing general cooking advice, not from the database.';
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_CONTEXT_LENGTH = 8000;
-const FETCH_TIMEOUT_MS = 30000;
+const FETCH_TIMEOUT_MS = 120000;
 
 function log(...args) {
   console.log('[rag]', ...args);
@@ -122,10 +122,10 @@ async function retrieveContext(query) {
   return { context, sources, lowConfidence };
 }
 
-async function callOpenRouter(messages) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+async function callLLM(messages) {
+  const apiKey = process.env.FREEMODEL_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured.');
+    throw new Error('FREEMODEL_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
@@ -133,13 +133,11 @@ async function callOpenRouter(messages) {
 
   let response;
   try {
-    response = await fetch(OPENROUTER_URL, {
+    response = await fetch(LLM_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:3001',
-        'X-Title': 'ResepAI Backend',
       },
       body: JSON.stringify({
         model: MODEL_NAME,
@@ -152,7 +150,7 @@ async function callOpenRouter(messages) {
   } catch (err) {
     clearTimeout(timeout);
     if (err.name === 'AbortError') {
-      throw new Error('OpenRouter request timed out');
+      throw new Error('LLM request timed out');
     }
     throw err;
   }
@@ -160,19 +158,19 @@ async function callOpenRouter(messages) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenRouter request failed with status ${response.status}: ${errorText}`);
+    throw new Error(`LLM request failed with status ${response.status}: ${errorText}`);
   }
 
   let data;
   try {
     data = await response.json();
   } catch (err) {
-    throw new Error(`Failed to parse OpenRouter response: ${err.message}`);
+    throw new Error(`Failed to parse LLM response: ${err.message}`);
   }
 
   const reply = data?.choices?.[0]?.message?.content;
   if (!reply || typeof reply !== 'string') {
-    throw new Error('OpenRouter response did not include a valid reply.');
+    throw new Error('LLM response did not include a valid reply.');
   }
 
   return reply;
@@ -198,7 +196,7 @@ async function generateRecipeReply(message, history = []) {
   ];
 
   log('Generating reply with', sources.length, 'sources. Low confidence:', lowConfidence);
-  const reply = await callOpenRouter(messages);
+  const reply = await callLLM(messages);
   return { reply, sources, lowConfidence };
 }
 
@@ -211,8 +209,6 @@ loadEmbeddings()
   })
   .catch((err) => {
     console.error('[rag] Failed to load embeddings:', err);
-    // Don't crash — server will return 503 until embeddings are loaded
-    // In production, you'd want to retry or exit
   });
 
 module.exports = {
