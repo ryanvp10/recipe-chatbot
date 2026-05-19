@@ -244,9 +244,13 @@ export default function App() {
       const chatUrl = `${API_URL}/chat`
       console.log('Fetching:', chatUrl)
 
-      // Detect if user is ready for the recipe
-      const readySignals = ['sudah', 'langsung aja', 'cukup', 'skip', 'gas', 'ready', 'yes', 'yup', 'oke', 'ok', 'siap', 'langsung']
-      const isReady = readySignals.some(s => text.toLowerCase().trim().includes(s))
+      // Detect if user is ready for the recipe (short affirmative responses only)
+      const trimmedText = text.toLowerCase().trim()
+      const readySignals = ['sudah', 'langsung aja', 'cukup', 'skip', 'gas', 'ready', 'yup', 'siap', 'langsung']
+      const isReady = (
+        readySignals.includes(trimmedText) ||
+        (trimmedText.length <= 10 && readySignals.some(s => trimmedText === s || trimmedText === s + '!' || trimmedText === s + '.'))
+      )
 
       const res = await fetch(chatUrl, {
         method: 'POST',
