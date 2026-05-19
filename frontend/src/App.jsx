@@ -228,15 +228,29 @@ export default function App() {
         .filter(m => m.role !== 'user' || messages.indexOf(m) < messages.length)
         .map(m => ({ role: m.role, content: m.content }))
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const res = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, sessionId, history }),
+        signal: controller.signal,
       })
 
-      if (!res.ok) throw new Error('API error')
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('API error:', res.status, errText);
+        throw new Error('API error ' + res.status + ': ' + errText);
+      }
 
       const data = await res.json()
+      if (!data.reply) {
+        console.error('No reply in response:', data);
+        throw new Error('No reply in response');
+      }
       const botMsg = {
         role: 'assistant',
         content: data.reply,
@@ -244,6 +258,7 @@ export default function App() {
       }
       setMessages(prev => [...prev, botMsg])
     } catch (err) {
+      console.error('Chat error:', err.message);
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: 'Maaf, terjadi kesalahan. Silakan coba lagi.',
