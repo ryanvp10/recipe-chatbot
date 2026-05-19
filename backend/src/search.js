@@ -14,7 +14,7 @@ let embeddingsBuffer = null;
 
 /**
  * Load embeddings from binary file + metadata JSON.
- * Call once at startup.
+ * Call once at startup. Returns a Promise for async compatibility.
  */
 function loadEmbeddings() {
   console.log('[search] Loading metadata...');
@@ -58,11 +58,12 @@ function loadEmbeddings() {
   }
 
   console.log(`[search] Loaded ${embeddingCount} embeddings with ${embeddingDim} dimensions.`);
+  return Promise.resolve();
 }
 
 /**
  * Search for top-K most similar embeddings to the query.
- * Uses direct buffer reads for performance (avoids creating intermediate arrays).
+ * Uses direct buffer reads for performance.
  * @param {number[]} queryEmbedding - 384-dimension normalized vector
  * @param {number} topK - number of results to return (1-100)
  * @returns {Array<{id: string, document: string, metadata: object, similarity: number}>}
@@ -78,13 +79,9 @@ function search(queryEmbedding, topK = 5) {
     );
   }
 
-  // Clamp topK to valid range
   topK = Math.max(1, Math.min(topK, 100));
 
-  // Compute similarities and track top-K in one pass
-  // Use a simple array of size topK, kept sorted ascending (min at index 0)
-  const topResults = []; // { index, similarity }
-
+  const topResults = [];
   for (let i = 0; i < embeddingCount; i++) {
     const offset = i * embeddingDim * 4;
     let dot = 0;
@@ -99,12 +96,10 @@ function search(queryEmbedding, topK = 5) {
       }
     } else if (dot > topResults[0].similarity) {
       topResults[0] = { index: i, similarity: dot };
-      // Re-sort to maintain min-heap property
       topResults.sort((a, b) => a.similarity - b.similarity);
     }
   }
 
-  // Sort descending for output
   topResults.sort((a, b) => b.similarity - a.similarity);
 
   return topResults.map((r) => ({

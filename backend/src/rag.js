@@ -1,11 +1,11 @@
 const dotenv = require('dotenv');
 const fetch = require('node-fetch');
-const { pipeline } = require('@xenova/transformers');
 const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5';
 const MODEL_NAME = 'google/gemini-2.0-flash-free';
 const SYSTEM_PROMPT =
   'You are ResepAI, a helpful Indonesian recipe assistant. Answer in the same language as the user (Bahasa Indonesia or English). Use the provided recipe context to answer. If context is low confidence, say you are providing general cooking advice, not from the database.';
@@ -13,8 +13,6 @@ const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_CONTEXT_LENGTH = 8000;
 const FETCH_TIMEOUT_MS = 30000;
-
-let extractorPromise;
 
 function log(...args) {
   console.log('[rag]', ...args);
@@ -37,17 +35,49 @@ function sanitizeHistory(history) {
     }));
 }
 
-async function getEmbeddingPipeline() {
-  if (!extractorPromise) {
-    extractorPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  }
-  return extractorPromise;
-}
-
 async function embedQuery(text) {
-  const extractor = await getEmbeddingPipeline();
-  const output = await extractor(text, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(HF_EMBEDDING_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.HF_TOKEN}`,
+      },
+      body: JSON.stringify({ inputs: text.slice(0, 500) }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('HF embedding request timed out');
+    }
+    throw err;
+  }
+  clearTimeout(timeout);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HF embedding request failed with status ${response.status}: ${errorText}`);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    throw new Error(`Failed to parse HF embedding response: ${err.message}`);
+  }
+
+  // BGE-small via HF Inference returns a flat array of floats
+  const vector = Array.isArray(data) ? data : null;
+  if (!vector || vector.length === 0) {
+    throw new Error('HF embedding response did not include a valid embedding vector.');
+  }
+
+  return vector;
 }
 
 async function retrieveContext(query) {
@@ -72,7 +102,7 @@ async function retrieveContext(query) {
   let lowConfidence = true;
 
   for (const r of results) {
-    if (r.similarity >= 0.5) {
+    if (r.similarity >= 0.15) {
       lowConfidence = false;
     }
     contextBlocks.push(`Similarity: ${r.similarity.toFixed(2)}\n${r.document}`);
