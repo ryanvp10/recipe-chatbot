@@ -268,10 +268,10 @@ export default function App() {
       }
       setMessages(prev => [...prev, botMsg])
     } catch (err) {
-      console.error('Chat error:', err.message);
+      console.error('Chat error:', err.message)
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Maaf, terjadi kesalahan. Silakan coba lagi.',
+        content: `Maaf, terjadi kesalahan.\n\nError: ${err.message}`,
       }])
     } finally {
       setIsLoading(false)
