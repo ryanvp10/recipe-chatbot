@@ -20,10 +20,23 @@ const allowedOrigins = (
 app.use(
   cors({
     origin: allowedOrigins,
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
+    credentials: false,
   })
 );
+
+// Handle OPTIONS preflight explicitly for HF Space proxy compatibility
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  res.status(204).send();
+});
 
 app.use(express.json({ limit: '1mb' }));
 
