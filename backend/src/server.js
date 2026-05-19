@@ -11,7 +11,7 @@ const app = express();
 const port = Number.parseInt(process.env.PORT, 10) || 3001;
 
 const allowedOrigins = (
-  process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000'
+  process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://recipe-chat.netlify.app'
 )
   .split(',')
   .map((origin) => origin.trim())
