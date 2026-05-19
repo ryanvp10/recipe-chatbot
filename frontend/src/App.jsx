@@ -228,8 +228,16 @@ export default function App() {
         .filter(m => m.role !== 'user' || messages.indexOf(m) < messages.length)
         .map(m => ({ role: m.role, content: m.content }))
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      // Wake up the server (free tier may be sleeping)
+      try {
+        await fetch(`${API_URL}/health`, { method: 'GET', signal: AbortSignal.timeout(15000) })
+      } catch {
+        // Server might still be waking up, wait a bit
+        await new Promise(r => setTimeout(r, 5000))
+      }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000)
 
       const res = await fetch(`${API_URL}/chat`, {
         method: 'POST',
@@ -238,18 +246,18 @@ export default function App() {
         signal: controller.signal,
       })
 
-      clearTimeout(timeoutId);
+      clearTimeout(timeoutId)
 
       if (!res.ok) {
-        const errText = await res.text();
-        console.error('API error:', res.status, errText);
-        throw new Error('API error ' + res.status + ': ' + errText);
+        const errText = await res.text()
+        console.error('API error:', res.status, errText)
+        throw new Error('API error ' + res.status + ': ' + errText)
       }
 
       const data = await res.json()
       if (!data.reply) {
-        console.error('No reply in response:', data);
-        throw new Error('No reply in response');
+        console.error('No reply in response:', data)
+        throw new Error('No reply in response')
       }
       const botMsg = {
         role: 'assistant',
