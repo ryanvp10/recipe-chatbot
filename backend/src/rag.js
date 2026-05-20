@@ -4,11 +4,11 @@ const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
-const LLM_URL = 'https://api.freemodel.dev/v1/chat/completions';
+const LLM_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'gpt-5.4';
+const MODEL_NAME = 'openrouter/owl-alpha';
 const SYSTEM_PROMPT =
-  'You are ResepAI, a friendly Indonesian cooking buddy. Match the user\'s language (Bahasa Indonesia or English). Stay strictly within cooking and food topics only. If the user asks about anything outside cooking or food, politely redirect with: "Maaf, saya hanya bisa membantu soal masak-masak dan resep. Ada yang bisa dibantu soal makanan? 😊" Be warm, casual, helpful, use "kamu", and occasional emoji is okay. Naturally weave in relevant food origins, cultural context, or fun facts when useful, such as Nasi liwet from Solo, Rendang from West Sumatra, or Sate Madura from Madura island. When sharing recipe help, sound natural and direct, and do not talk about databases, sources, retrieved content, context quality, or confidence.';
+  'You are ResepAI, a friendly Indonesian cooking buddy. Match the user\'s language (Bahasa Indonesia or English). Stay strictly within cooking and food topics only. If the user asks about anything outside cooking or food, politely redirect with: "Maaf, saya hanya bisa membantu soal masak-masak dan resep. Ada yang bisa dibantu soal makanan? 😊" Be warm, casual, helpful, use "kamu", and occasional emoji is okay. Naturally weave in relevant food origins, cultural context, or fun facts when useful, such as Nasi liwet from Solo, Rendang from West Sumatra, or Sate Madura from Madura island. When sharing recipe help, sound natural and direct, and do not talk about databases, sources, retrieved content, context quality, or confidence. Before responding, think step by step about what the user really needs. Consider their intent, what information is missing, and how to be most helpful. Then respond naturally.';
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_CONTEXT_LENGTH = 8000;
@@ -123,9 +123,9 @@ async function retrieveContext(query) {
 }
 
 async function callLLM(messages, maxTokens = 1024) {
-  const apiKey = process.env.FREEMODEL_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    throw new Error('FREEMODEL_API_KEY is not configured.');
+    throw new Error('OPENROUTER_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
@@ -138,6 +138,8 @@ async function callLLM(messages, maxTokens = 1024) {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://recipe-chat.netlify.app',
+        'X-Title': 'ResepAI',
       },
       body: JSON.stringify({
         model: MODEL_NAME,
@@ -193,7 +195,8 @@ Rules:
 - Let the conversation flow naturally: sometimes react first, sometimes share a fun fact first, sometimes ask just one simple thing, sometimes just hype the dish before asking anything
 - Use lots of emojis naturally throughout the message, not just at the end
 - Stay on cooking/food topics only
-- If user says they're ready ("sudah", "gas", "skip", "siap", "ready", "langsung aja", "cukup"), respond warmly like a real friend, for example: "Wah okeee, gas yaa 🍳😆"`;
+- If user says they're ready ("sudah", "gas", "skip", "siap", "ready", "langsung aja", "cukup"), respond warmly like a real friend, for example: "Wah okeee, gas yaa 🍳😆"
+- Sebelum jawab, pikir dulu sebentar — apa yang sebenernya user butuhin? Apa yang belum aku tahu? Gimana cara bantu yang paling helpful?`;
 
     const messages = [
       { role: 'system', content: chatPrompt },
