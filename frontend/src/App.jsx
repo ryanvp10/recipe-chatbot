@@ -5,6 +5,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import { FiMoon, FiSend, FiSun } from 'react-icons/fi'
 import { GiChefToque } from 'react-icons/gi'
 import ChatSidebar from './components/ChatSidebar'
+import { addMessageToChat, createNewChat, getChatById } from './utils/chatStorage'
 
 const ThemeContext = createContext()
 
@@ -34,6 +35,12 @@ export function useTheme() {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+function normalizeMessages(messages = []) {
+  return Array.isArray(messages)
+    ? messages.map(({ role, content, sources }) => ({ role, content, ...(sources ? { sources } : {}) }))
+    : []
+}
 
 function loadMessages() {
   try {
@@ -210,19 +217,36 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState(null)
 
   useEffect(() => {
+    if (!activeChatId) return
+
+    const activeChat = getChatById(activeChatId)
+    if (activeChat) {
+      setMessages(normalizeMessages(activeChat.messages))
+    }
+  }, [activeChatId])
+
+  useEffect(() => {
+    if (activeChatId) return
     saveMessages(messages)
-  }, [messages])
+  }, [messages, activeChatId])
 
   const handleSend = useCallback(async (text) => {
     const userMsg = { role: 'user', content: text }
+
+    let chatId = activeChatId
+    if (!chatId) {
+      const newChat = createNewChat(text)
+      chatId = newChat.id
+      setActiveChatId(chatId)
+      setSidebarOpen(false)
+    }
+
+    const history = normalizeMessages(messages)
     setMessages(prev => [...prev, userMsg])
+    addMessageToChat(chatId, userMsg)
     setIsLoading(true)
 
     try {
-      const history = messages
-        .filter(m => m.role !== 'user' || messages.indexOf(m) < messages.length)
-        .map(m => ({ role: m.role, content: m.content }))
-
       // Wake up the server (free tier may be sleeping)
       try {
         const healthCtrl = new AbortController()
@@ -273,23 +297,31 @@ export default function App() {
         sources: data.sources || [],
       }
       setMessages(prev => [...prev, botMsg])
+      addMessageToChat(chatId, botMsg)
     } catch (err) {
       console.error('Chat error:', err.message)
-      setMessages(prev => [...prev, {
+      const errorMsg = {
         role: 'assistant',
         content: `Maaf, terjadi kesalahan.\n\nError: ${err.message}`,
-      }])
+      }
+      setMessages(prev => [...prev, errorMsg])
+      if (chatId) {
+        addMessageToChat(chatId, errorMsg)
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [messages, sessionId])
+  }, [activeChatId, messages, sessionId])
 
   const handleSelectChat = useCallback((chat) => {
     setActiveChatId(chat?.id ?? null)
+    setMessages(normalizeMessages(chat?.messages))
+    setSidebarOpen(false)
   }, [])
 
   const handleNewChat = useCallback(() => {
     setActiveChatId(null)
+    setMessages([])
     setSidebarOpen(false)
   }, [])
 
