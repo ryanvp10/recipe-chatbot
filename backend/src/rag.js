@@ -105,7 +105,7 @@ async function retrieveContext(query) {
     if (r.similarity >= 0.15) {
       lowConfidence = false;
     }
-    contextBlocks.push(`Similarity: ${r.similarity.toFixed(2)}\n${r.document}`);
+    contextBlocks.push(r.document);
     sources.push({
       title: r.metadata?.title || 'Unknown recipe',
       num_ingredients: r.metadata?.num_ingredients || 0,
@@ -257,7 +257,7 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
   const systemContent = [
     SYSTEM_PROMPT,
     'CURRENT MODE: RECIPE. User sudah minta resep lengkap. Langsung kasih resep dengan gaya ngobrol yang asik dan natural. Jangan bilang "menurut resep" atau "dari data". Kayak temen yang lagi share resep aja.',
-    `Berikut info resep yang relevan, pakai sebagai referensi:\n${context || 'Tidak ada info tambahan.'}`,
+    `Ini beberapa resep yang bisa jadi inspirasi:\n${context || 'Tidak ada info tambahan.'}`,
   ].join('\n\n');
 
   const messages = [
@@ -274,6 +274,8 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
     'dari resep yang ada', 'dari database', 'dari sumber', 'menurut resep',
     'berdasarkan data', 'saya menemukan', 'saya mencari', 'berdasarkan resep',
     'dari informasi yang ada', 'dari data yang ada', 'menurut data',
+    'dari konteks', 'konteks resep', 'berdasarkan konteks', 'dari hasil',
+    'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
   ];
   const lowerReply = reply.toLowerCase();
   for (const phrase of dbPhrases) {
@@ -287,6 +289,11 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
       reply = reply.substring(0, sentenceStart).trim();
       break;
     }
+  }
+
+  // If reply got too short after stripping, regenerate with a simpler fallback
+  if (reply.length < 20) {
+    reply = 'Oke, ini resepnya ya! 🍳\n\n' + (context ? context.split('\n').slice(0, 30).join('\n') : 'Maaf, aku butuh info lebih lanjut.');
   }
 
   return { reply, sources, lowConfidence };
