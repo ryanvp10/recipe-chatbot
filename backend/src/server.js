@@ -75,8 +75,8 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       return res.status(400).json({ error: 'History must be an array if provided.' });
     }
 
-    if (history && history.length > 20) {
-      return res.status(400).json({ error: 'History too long. Maximum 20 messages.' });
+    if (history && history.length > 50) {
+      return res.status(400).json({ error: 'History too long. Maximum 50 messages.' });
     }
 
     if (!embeddingsReady()) {
