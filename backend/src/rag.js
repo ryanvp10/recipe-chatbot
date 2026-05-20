@@ -312,11 +312,12 @@ DO NOT REPLY LIKE THIS.
     'dari resep yang ada', 'dari database', 'dari sumber', 'menurut resep',
     'berdasarkan data', 'saya menemukan', 'saya mencari', 'berdasarkan resep',
     'dari informasi yang ada', 'dari data yang ada', 'menurut data',
-    'dari konteks', 'konteks resep', 'berdasarkan konteks', 'dari hasil',
+    'dari konteks', 'konteks resep', 'konteks yang ada', 'berdasarkan konteks', 'dari hasil',
     'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
     'dari referensi', 'referensi yang saya', 'yang saya punya',
     'berikut salah satu', 'berikut ini', 'yang paling dekat',
     'yang cocok adalah', 'yang bisa kamu', 'yang bisa kalian',
+    'resep yang paling dekat', 'yang paling cocok',
   ];
   const lowerReply = reply.toLowerCase();
   for (const phrase of dbPhrases) {
@@ -332,9 +333,18 @@ DO NOT REPLY LIKE THIS.
     }
   }
 
-  // If reply got too short after stripping, regenerate with a simpler fallback
+  // If reply got too short after stripping, use a conversational fallback
   if (reply.length < 20) {
-    reply = 'Oke, ini resepnya ya! 🍳\n\n' + (context ? context.split('\n').slice(0, 30).join('\n') : 'Maaf, aku butuh info lebih lanjut.');
+    // Try to extract recipe title from context
+    const titleMatch = context?.match(/^([A-Z][^\n]+)/m);
+    const recipeTitle = titleMatch ? titleMatch[1].trim() : 'resep ini';
+    reply = `Wah, ${recipeTitle} enak nih! 🍳\n\n`;
+    if (context) {
+      // Take first 20 lines of context as recipe body
+      const body = context.split('\n').slice(0, 20).join('\n');
+      reply += body;
+    }
+    reply += '\n\nMau aku jelasin lebih detail? 😊';
   }
 
   // Inject conversational opening if reply starts with recipe title (no greeting)
