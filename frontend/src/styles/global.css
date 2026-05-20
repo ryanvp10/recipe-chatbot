@@ -246,6 +246,13 @@ button {
   animation-delay: 0.3s;
 }
 
+.typing-indicator-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
 .chat-input-area {
   @apply fixed inset-x-0 bottom-0 z-20 border-t px-4 py-4 backdrop-blur md:px-6;
   background: var(--surface);

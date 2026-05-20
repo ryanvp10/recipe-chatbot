@@ -102,16 +102,28 @@ function MessageBubble({ message }) {
 }
 
 function TypingIndicator() {
+  const [dots, setDots] = useState('');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 400);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="message-bubble bot">
       <div className="message-avatar"><GiChefToque className="icon-sm" /></div>
       <div className="message-content">
+        <div className="typing-indicator-text">
+          <span>Searching for recipes{dots}</span>
+        </div>
         <div className="typing-indicator">
           <span></span><span></span><span></span>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function MessageList({ messages, isLoading }) {
@@ -263,18 +275,10 @@ export default function App() {
       const chatUrl = `${API_URL}/chat`
       console.log('Fetching:', chatUrl)
 
-      // Detect if user is ready for the recipe (short affirmative responses only)
-      const trimmedText = text.toLowerCase().trim()
-      const readySignals = ['sudah', 'langsung aja', 'cukup', 'skip', 'gas', 'ready', 'yup', 'siap', 'langsung']
-      const isReady = (
-        readySignals.includes(trimmedText) ||
-        (trimmedText.length <= 10 && readySignals.some(s => trimmedText === s || trimmedText === s + '!' || trimmedText === s + '.'))
-      )
-
       const res = await fetch(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, history, confirmed: isReady }),
+        body: JSON.stringify({ message: text, sessionId, history }),
         signal: controller.signal,
       })
 
