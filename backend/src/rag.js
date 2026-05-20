@@ -278,6 +278,9 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
     'dari informasi yang ada', 'dari data yang ada', 'menurut data',
     'dari konteks', 'konteks resep', 'berdasarkan konteks', 'dari hasil',
     'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
+    'dari referensi', 'referensi yang saya', 'yang saya punya',
+    'berikut salah satu', 'berikut ini', 'yang paling dekat',
+    'yang cocok adalah', 'yang bisa kamu', 'yang bisa kalian',
   ];
   const lowerReply = reply.toLowerCase();
   for (const phrase of dbPhrases) {
@@ -296,6 +299,32 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
   // If reply got too short after stripping, regenerate with a simpler fallback
   if (reply.length < 20) {
     reply = 'Oke, ini resepnya ya! 🍳\n\n' + (context ? context.split('\n').slice(0, 30).join('\n') : 'Maaf, aku butuh info lebih lanjut.');
+  }
+
+  // Inject conversational opening if reply starts with recipe title (no greeting)
+  const firstLine = reply.split('\n')[0].toLowerCase();
+  const needsGreeting = !firstLine.includes('wah') && !firstLine.includes('oke') && !firstLine.includes('halo') && !firstLine.includes('hi') && !firstLine.includes('😊') && !firstLine.includes('🍳');
+  if (needsGreeting && reply.length > 30) {
+    const greetings = [
+      'Wah, enak nih! 🍳\n\n',
+      'Oke, ini resepnya ya! 😊\n\n',
+      'Siap! Ini yang aku rekomendasiin 🔥\n\n',
+      'Mantap, ini resep yang pas buat kamu! 😋\n\n',
+    ];
+    reply = greetings[Math.floor(Math.random() * greetings.length)] + reply;
+  }
+
+  // Add follow-up question at the end if not already present
+  const lastLine = reply.split('\n').pop().toLowerCase();
+  const hasQuestion = lastLine.includes('?') || lastLine.includes('gimana') || lastLine.includes('mau') || lastLine.includes('kamu');
+  if (!hasQuestion && reply.length > 50) {
+    const followUps = [
+      '\n\nKamu mau yang gimana? Yang simpel atau yang lengkap? 😊',
+      '\n\nAda preferensi tertentu? Mau yang kuat atau yang ringan? 🍳',
+      '\n\nGimana, cocok nggak? Atau mau yang lain? 😋',
+      '\n\nMau aku jelasin lebih detail soal bumbunya? 🔥',
+    ];
+    reply = reply + followUps[Math.floor(Math.random() * followUps.length)];
   }
 
   return { reply, sources, lowConfidence };
