@@ -87,14 +87,6 @@ function MessageBubble({ message }) {
             </ReactMarkdown>
           )}
         </div>
-        {message.sources && message.sources.length > 0 && (
-          <div className="message-sources">
-            <span className="sources-label">📚 Sumber:</span>
-            {message.sources.map((s, i) => (
-              <span key={i} className="source-item">{s.title}</span>
-            ))}
-          </div>
-        )}
       </div>
       {isUser && <div className="message-avatar user-avatar">👤</div>}
     </div>
