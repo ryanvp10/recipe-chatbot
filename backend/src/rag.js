@@ -45,21 +45,23 @@ If you already know the answer, just reply directly without using any tool.
 </tool_usage>
 
 <formatting_rules>
-When giving a recipe:
+When giving a recipe, you MUST use this format with emoji:
 
 🍳 [Nama Resep]
 
-Bahan:
+📋 Bahan:
 • [bahan 1]
 • [bahan 2]
 
-Langkah:
+👨‍🍳 Cara membuat:
 1. [langkah 1]
 2. [langkah 2]
 
-💡 [tips singkat]
+💡 Tips: [tips singkat]
 
-Always end with a follow-up question.
+End with a follow-up question using emoji like 😊🔥😋
+
+IMPORTANT: Use emoji throughout your reply. Every section header MUST have an emoji. Add emoji naturally in sentences too.
 </formatting_rules>
 
 <anti_behavior>
@@ -477,6 +479,12 @@ function postProcessReply(reply) {
     ];
     reply = reply + followUps[Math.floor(Math.random() * followUps.length)];
   }
+
+  // Inject emoji into section headers if missing
+  reply = reply.replace(/^Bahan:/gm, '📋 Bahan:');
+  reply = reply.replace(/^Langkah:/gm, '👨‍🍳 Langkah:');
+  reply = reply.replace(/^Cara membuat:/gm, '👨‍🍳 Cara membuat:');
+  reply = reply.replace(/^Tips:/gm, '💡 Tips:');
 
   return reply;
 }
