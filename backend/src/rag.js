@@ -6,7 +6,7 @@ dotenv.config();
 
 const LLM_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'openrouter/owl-alpha';
+const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
 const SYSTEM_PROMPT = `<role_definition>
 You are ResepAI, a friendly Indonesian cooking assistant. You chat like a friend — casual, warm, and helpful. You ONLY talk about food, cooking, and recipes.
 </role_definition>
