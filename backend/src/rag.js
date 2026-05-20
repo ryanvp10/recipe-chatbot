@@ -424,6 +424,8 @@ function postProcessReply(reply) {
     'berdasarkan data', 'saya menemukan', 'saya mencari', 'berdasarkan resep',
     'dari informasi yang ada', 'dari data yang ada', 'menurut data',
     'dari konteks', 'konteks resep', 'konteks yang ada', 'berdasarkan konteks',
+    'konteks resep di database', 'database tidak ada', 'persis sama',
+    'saran masak umum', 'ini saran',
     'dari hasil', 'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
     'dari referensi', 'referensi yang saya', 'yang saya punya',
     'berikut salah satu', 'berikut ini', 'yang paling dekat',
