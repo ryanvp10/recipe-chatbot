@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import { FiMoon, FiSend, FiSun } from 'react-icons/fi'
 import { GiChefToque } from 'react-icons/gi'
+import ChatSidebar from './components/ChatSidebar'
 
 const ThemeContext = createContext()
 
@@ -205,6 +206,8 @@ export default function App() {
   const [messages, setMessages] = useState(loadMessages)
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId] = useState(loadSessionId)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeChatId, setActiveChatId] = useState(null)
 
   useEffect(() => {
     saveMessages(messages)
@@ -281,12 +284,32 @@ export default function App() {
     }
   }, [messages, sessionId])
 
+  const handleSelectChat = useCallback((chat) => {
+    setActiveChatId(chat?.id ?? null)
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    setActiveChatId(null)
+    setSidebarOpen(false)
+  }, [])
+
   return (
     <ThemeProvider>
       <div className="app-container">
-        <Header />
-        <MessageList messages={messages} isLoading={isLoading} />
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        <div style={{ display: 'flex', minHeight: '100vh' }}>
+          <ChatSidebar
+            isOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen(!sidebarOpen)}
+            onSelect={handleSelectChat}
+            onNewChat={handleNewChat}
+            activeChatId={activeChatId}
+          />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <Header />
+            <MessageList messages={messages} isLoading={isLoading} />
+            <ChatInput onSend={handleSend} disabled={isLoading} />
+          </div>
+        </div>
       </div>
     </ThemeProvider>
   )
