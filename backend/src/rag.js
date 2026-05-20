@@ -226,29 +226,35 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
 
   if (!confirmed) {
     // Discussion mode: ALWAYS ask questions, NEVER give recipes
-    const chatPrompt = `Kamu adalah temen ngobrol soal masak. Santai, natural, kayak chat sama temen. Pakai "kamu", emoji secukupnya 😊🍳.
+    const chatPrompt = `<role_definition>
+You are ResepAI, a friendly cooking buddy. The user is in DISCUSSION mode — they want to chat and explore ideas, NOT get a full recipe yet.
+</role_definition>
 
-ATURAN PENTING — WAJIB DIIKUTI:
-- KAMU TIDAK BOLEH KASIH RESEP. PUN. Dalam kondisi apapun. Jangan kasih bahan, jangan kasih langkah, jangan kasih resep lengkap. PUNYA BAHAN APA AJA.
-- Tugasmu CUMA tanya balik ke user. Tanya terus sampai user bilang "sudah/gas/skip/siap/langsung aja/cukup/ready".
-- Kalau user kasih daftar bahan, JANGAN langsung kasih resep. Tanya dulu: "Mau bikin apa?", "Yang gimana?", "Ada preferensi tertentu?"
-- Minimal tanya 2-3 hal sebelum user boleh dapet resep.
-- Jawab pendek, 2-3 kalimat max.
-- Kalau user bilang "sudah/gas/skip/siap/langsung aja/cukup", bilang: "Oke siap! Sebentar ya, aku siapin resepnya 🍳" — TETAP jangan kasih resep, biarkan sistem yang kasih.
+<core_directives>
+1. NEVER give recipes. No ingredients, no steps, no recipe names with details.
+2. ONLY ask follow-up questions to understand what the user wants.
+3. Be casual and friendly. Use "kamu". Use emoji: 😊🍳👍🔥
+4. Keep it SHORT — 2-3 sentences max.
+5. NEVER say "Tentu", "Tentu saja", "Berikut", "Dari konteks", "Dari referensi", "menurut", "berdasarkan".
+6. If user says "sudah/gas/skip/siap/langsung aja/cukup/ready", reply: "Oke siap! Aku siapin resepnya ya 🍳"
+</core_directives>
 
-Contoh flow yang BENAR:
+<example_good>
 User: "Aku punya ayam, lada, bawang"
 Bot: "Wah simpel tapi enak nih! 🍗 Kamu mau bikin ayam goreng, bakar, atau yang lain?"
 
-User: "Ayam goreng"
-Bot: "Oke ayam goreng! 🔥 Kamu mau yang krispy atau yang biasa aja? Dan buat berapa orang?"
+User: "Aku hanya ada tahu dan tempe"
+Bot: "Tahu-tempe classic! 😋 Kamu mau yang goreng, tumis, atau yang berkuah?"
+</example_good>
 
-User: "Krispy, buat 2 orang"
-Bot: "Siap! Aku siapin resepnya ya 🍳"
+<example_bad>
+User: "Aku punya tahu dan tempe"
+Bot: "Tentu, ada beberapa pilihan masakan. Dari konteks resep, yang paling dekat adalah Opor Ayam..." ❌
+</example_bad>
 
-Contoh flow yang SALAH (JANGAN LAKUKAN):
-User: "Aku punya ayam, lada, bawang"
-Bot: "Ini resep ayam goreng: ..." ❌`;
+<final_enforcement>
+CRITICAL: You are in DISCUSSION mode. NEVER give recipes. ONLY ask follow-up questions. Be casual and short.
+</final_enforcement>`;
 
     const messages = [
       { role: 'system', content: chatPrompt },
@@ -259,7 +265,7 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
     log('Discussion mode: chatting');
     let reply = await callLLM(messages, 200);
 
-    // Post-process: strip any recipe content that LLM might have added
+    // Post-process: strip any recipe content or robotic phrases
     const lowerReply = reply.toLowerCase();
     const cutPoints = [
       'berikut resep', 'berikut ini', 'berikut adalah', 'ini resep', 'ini dia resep',
@@ -267,6 +273,8 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
       'bahan:', 'cara membuat:', 'langkah:', '1. ', '2. ', '3. ',
       'bahan-bahan:', 'cara pembuatan:', 'langkah-langkah:',
       'siapkan bahan', 'pertama-tama', 'langkah pertama',
+      'dari konteks', 'dari referensi', 'dari data', 'menurut resep',
+      'yang paling dekat', 'yang cocok adalah', 'ada beberapa pilihan',
     ];
     for (const marker of cutPoints) {
       const idx = lowerReply.indexOf(marker);
@@ -275,6 +283,9 @@ Bot: "Ini resep ayam goreng: ..." ❌`;
         break;
       }
     }
+
+    // Strip "Tentu" / "Tentu saja" opening
+    reply = reply.replace(/^(Tentu,?\s*(saja,?\s*)?)/i, '').trim();
 
     // If reply is too short after cleanup, provide a fallback question
     if (reply.length < 15) {
