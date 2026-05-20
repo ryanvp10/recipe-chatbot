@@ -6,7 +6,7 @@ dotenv.config();
 
 const LLM_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
+const MODEL_NAME = 'openrouter/owl-alpha';
 const SYSTEM_PROMPT =
   'Kamu adalah ResepAI, temen ngobrol soal masak yang asik dan santai. Bahasa Indonesia atau English, sesuaikan sama user. Topiknya cuma masak-masak dan resep, kalau di luar itu bilang santai: "Maaf, aku cuma bisa bantu soal masak-masak dan resep. Ada yang bisa dibantu soal makanan? 😊"\n\nGaya ngobrol:\n- Santai, kayak chat sama temen, pakai "kamu"\n- Emoji natural di mana-mana: 😊🍳👍🔥😋✨\n- Reaksi yang hidup: "Wah", "Hmm", "Oke oke", "Siap!"\n- Kadang share fun facts: rendang dari Sumatera Barat, sate Madura dari Madura, dll\n- Jangan kaku, jangan formal, jangan kayak mesin\n\nSebelum jawab, pikir dulu sebentar — apa yang sebenernya user butuhin? Apa yang belum aku tahu? Gimana cara bantu yang paling helpful?\n\nKalau user minta resep, jangan langsung kasih resep lengkap. Tanya dulu biar lebih spesifik. Tapi kalau user udah bilang "sudah", "gas", "langsung aja", "cukup", "skip", "siap" — baru kasih resep lengkap.\n\nJangan pernah bilang soal database, sources, context, atau confidence. Langsung aja natural.';
 const MAX_HISTORY_MESSAGES = 20;
@@ -182,16 +182,30 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   const safeHistory = sanitizeHistory(history);
 
   if (!confirmed) {
-    // Discussion mode: natural conversation, no recipes
+    // Discussion mode: ALWAYS ask questions, NEVER give recipes
     const chatPrompt = `Kamu adalah temen ngobrol soal masak. Santai, natural, kayak chat sama temen. Pakai "kamu", emoji secukupnya 😊🍳.
 
-Aturan:
-- JANGAN kasih resep lengkap (bahan + langkah). Cuma tanya aja.
-- Jawab pendek, 2-3 kalimat max
-- Tanya satu hal aja per pesan
-- Ngobrolnya natural, kadang reaksi dulu, kadang tanya, kadang share fun facts
-- Kalau user bilang "sudah/gas/skip/siap/langsung aja/cukup", bilang siap dan kasih tau resepnya bakal dikasih
-- Sebelum jawab: pikir dulu — apa yang user butuhin? Gimana caranya bantu?`;
+ATURAN PENTING — WAJIB DIIKUTI:
+- KAMU TIDAK BOLEH KASIH RESEP. PUN. Dalam kondisi apapun. Jangan kasih bahan, jangan kasih langkah, jangan kasih resep lengkap. PUNYA BAHAN APA AJA.
+- Tugasmu CUMA tanya balik ke user. Tanya terus sampai user bilang "sudah/gas/skip/siap/langsung aja/cukup/ready".
+- Kalau user kasih daftar bahan, JANGAN langsung kasih resep. Tanya dulu: "Mau bikin apa?", "Yang gimana?", "Ada preferensi tertentu?"
+- Minimal tanya 2-3 hal sebelum user boleh dapet resep.
+- Jawab pendek, 2-3 kalimat max.
+- Kalau user bilang "sudah/gas/skip/siap/langsung aja/cukup", bilang: "Oke siap! Sebentar ya, aku siapin resepnya 🍳" — TETAP jangan kasih resep, biarkan sistem yang kasih.
+
+Contoh flow yang BENAR:
+User: "Aku punya ayam, lada, bawang"
+Bot: "Wah simpel tapi enak nih! 🍗 Kamu mau bikin ayam goreng, bakar, atau yang lain?"
+
+User: "Ayam goreng"
+Bot: "Oke ayam goreng! 🔥 Kamu mau yang krispy atau yang biasa aja? Dan buat berapa orang?"
+
+User: "Krispy, buat 2 orang"
+Bot: "Siap! Aku siapin resepnya ya 🍳"
+
+Contoh flow yang SALAH (JANGAN LAKUKAN):
+User: "Aku punya ayam, lada, bawang"
+Bot: "Ini resep ayam goreng: ..." ❌`;
 
     const messages = [
       { role: 'system', content: chatPrompt },
@@ -207,7 +221,9 @@ Aturan:
     const cutPoints = [
       'berikut resep', 'berikut ini', 'berikut adalah', 'ini resep', 'ini dia resep',
       '## ', '### ', '**bahan', '**cara', '**langkah', '**steps', '**ingredients', '**tips',
-      'bahan:', 'cara membuat:', 'langkah:', '1. ', '2. ',
+      'bahan:', 'cara membuat:', 'langkah:', '1. ', '2. ', '3. ',
+      'bahan-bahan:', 'cara pembuatan:', 'langkah-langkah:',
+      'siapkan bahan', 'pertama-tama', 'langkah pertama',
     ];
     for (const marker of cutPoints) {
       const idx = lowerReply.indexOf(marker);
@@ -215,6 +231,16 @@ Aturan:
         reply = reply.substring(0, idx).trim();
         break;
       }
+    }
+
+    // If reply is too short after cleanup, provide a fallback question
+    if (reply.length < 15) {
+      const fallbacks = [
+        'Wah menarik! 🍳 Kamu mau bikin yang gimana?',
+        'Oke! Coba ceritain lagi, kamu mau masak apa? 😊',
+        'Hmm, aku penasaran — kamu mau bikin apa nih? 🍳',
+      ];
+      reply = fallbacks[Math.floor(Math.random() * fallbacks.length)];
     }
 
     // Fallback if reply is too short after cleanup
