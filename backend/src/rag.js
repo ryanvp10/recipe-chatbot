@@ -7,79 +7,35 @@ dotenv.config();
 const LLM_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
 const MODEL_NAME = 'gemini-2.0-flash';
-const SYSTEM_PROMPT = `<role_definition>
-You are ResepAI, a friendly Indonesian cooking assistant. You chat like a friend — casual, warm, and helpful. You have access to tools to help users find recipes.
-</role_definition>
+const SYSTEM_PROMPT = `Kamu adalah ResepAI, teman ngobrol soal masak-masak. 
 
-<core_directives>
-1. LANGUAGE: Reply 100% in Bahasa Indonesia. No English except universal culinary terms.
-2. TONE: Casual, like texting a friend. Use "kamu". Use emoji naturally: 😊🍳👍🔥😋✨
-3. DOMAIN: Only food, cooking, recipes. If off-topic, say: "Maaf, aku cuma bisa bantu soal masak-masak 😊"
-4. NEVER say: "menurut", "berdasarkan", "dari data", "dari resep yang ada", "konteks", "pencarian", "dari referensi", "saya menemukan", "saya punya", "berikut salah satu", "yang cocok adalah".
-5. NEVER start with filler like "Tentu saja!" or "Berikut adalah". Just jump into the answer naturally.
-6. When user asks for a recipe, use tools to find the best match. If search_recipe returns no good results, use google_search as fallback.
-</core_directives>
+ATURAN:
+- Bahasa Indonesia santai, pakai "kamu"
+- Pakai emoji: 😊🍳🔥😋✨👍
+- Langsung jawab, jangan pakai pembuka seperti "Tentu", "Berikut adalah", "Berdasarkan"
+- JANGAN PERNAH sebut: database, konteks, sumber, referensi, data, pencarian, ditemukan
+- JANGAN PERNAH pakai format "ada X jenis yang terdetekti"
+- Langsung kasih resep dengan format:
 
-<tool_usage>
-You have two tools available:
-
-1. search_recipe — Searches a database of 66,000+ Indonesian recipes
-   Use when: User asks for a specific recipe or cooking instructions
-
-2. google_search — Searches the web for recipes
-   Use when: search_recipe doesn't find a good match
-
-To use a tool, output this exact format:
-{TOOL: search_recipe}
-query: [search query in Indonesian]
-{TOOL: end}
-
-or
-
-{TOOL: google_search}
-query: [search query in Indonesian]
-{TOOL: end}
-
-After you use a tool, wait for the tool result. Then generate your conversational reply.
-If you already know the answer, just reply directly without using any tool.
-</tool_usage>
-
-<formatting_rules>
-When giving a recipe, you MUST use this format with emoji:
-
-🍳 [Nama Resep]
+🍳 [Nama]
 
 📋 Bahan:
-• [bahan 1]
-• [bahan 2]
+• ...
 
-👨‍🍳 Cara membuat:
-1. [langkah 1]
-2. [langkah 2]
+👨‍🍳 Cara:
+1. ...
 
-💡 Tips: [tips singkat]
+💡 Tips: ...
 
-End with a follow-up question using emoji like 😊🔥😋
+- Selalu akhiri dengan pertanyaan balik pakai emoji
+- Kalau nggak bisa bantu: "Maaf, aku cuma bisa bantu soal masak-masak 😊"
 
-IMPORTANT: Use emoji throughout your reply. Every section header MUST have an emoji. Add emoji naturally in sentences too.
-</formatting_rules>
+Kamu punya alat:
+{TOOL: search_recipe}
+query: [pencarian]
+{TOOL: end}
 
-<anti_behavior>
-- NEVER be robotic, formal, or machine-like.
-- NEVER mention databases, sources, context, or search results.
-- NEVER give medical/nutritional advice.
-- NEVER dump a list of recipes. Pick ONE best match.
-</anti_behavior>
-
-<final_enforcement>
-CRITICAL RULES:
-1. Only talk about food and cooking.
-2. Always reply in Bahasa Indonesia.
-3. Be casual and friendly, like texting a friend.
-4. Use tools when you need recipe info.
-5. NEVER mention data, sources, or databases.
-6. Always end with a follow-up question.
-</final_enforcement>`;
+Setelah dapat hasil alat, langsung kasih resep dengan format di atas.`;
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_CONTEXT_LENGTH = 8000;
@@ -354,7 +310,7 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   }
 
   // Post-process
-  reply = postProcessReply(reply);
+  reply = postProcessReply(reply, message);
 
   return { reply, sources: [], lowConfidence: false };
 }
@@ -374,12 +330,12 @@ async function executeSearchRecipe(query) {
   try {
     const { context } = await retrieveContext(query);
     if (!context || context.trim().length < 10) {
-      return 'No matching recipes found in database.';
+      return 'Nggak nemu resep yang cocok nih. Coba kata kunci lain ya!';
     }
     return context;
   } catch (err) {
     log('search_recipe failed:', err.message);
-    return 'Search failed. Try google_search instead.';
+    return 'Pencarian gagal. Coba lagi ya!';
   }
 }
 
@@ -399,7 +355,7 @@ async function executeGoogleSearch(query) {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return 'Google search failed. Please try again.';
+      return 'Pencarian gagal. Coba lagi ya!';
     }
 
     const html = await response.text();
@@ -416,82 +372,97 @@ async function executeGoogleSearch(query) {
     }
 
     if (results.length === 0) {
-      return 'No search results found.';
+      return 'Nggak nemu hasil pencarian.';
     }
     return results.join('\n\n');
   } catch (err) {
     log('google_search failed:', err.message);
-    return 'Google search failed. Please try again.';
+    return 'Pencarian gagal. Coba lagi ya!';
   }
 }
 
 // Helper: Post-process LLM reply
-function postProcessReply(reply) {
-  // Strip database-like phrases
-  const dbPhrases = [
-    'dari resep yang ada', 'dari database', 'dari sumber', 'menurut resep',
-    'berdasarkan data', 'saya menemukan', 'saya mencari', 'berdasarkan resep',
-    'dari informasi yang ada', 'dari data yang ada', 'menurut data',
-    'dari konteks', 'konteks resep', 'konteks yang ada', 'berdasarkan konteks',
-    'konteks resep di database', 'database tidak ada', 'persis sama',
-    'saran masak umum', 'ini saran',
-    'dari hasil', 'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
-    'dari referensi', 'referensi yang saya', 'yang saya punya',
-    'berikut salah satu', 'berikut ini', 'yang paling dekat',
-    'yang cocok adalah', 'yang bisa kamu', 'yang bisa kalian',
-    'resep yang paling dekat', 'yang paling cocok',
+function postProcessReply(reply, userQuery = '') {
+  // === STEP 1: Strip entire first paragraph if it contains robotic openers ===
+  const roboticOpeners = [
+    /dari konteks/i, /dari resep/i, /tentu/i, /berikut adalah/i,
+    /berikut ini/i, /ada\s+\d+\s+jenis/i, /yang terdeteksi/i,
   ];
-
-  const lowerReply = reply.toLowerCase();
-  for (const phrase of dbPhrases) {
-    const idx = lowerReply.indexOf(phrase);
-    if (idx >= 0) {
-      let sentenceStart = idx;
-      while (sentenceStart > 0 && reply[sentenceStart - 1] !== '\n' && reply[sentenceStart - 1] !== '.') {
-        sentenceStart--;
-      }
-      reply = reply.substring(0, sentenceStart).trim();
-      break;
+  const paragraphs = reply.split(/\n\n+/);
+  if (paragraphs.length > 1) {
+    const firstPara = paragraphs[0].toLowerCase();
+    const hasRoboticOpener = roboticOpeners.some(r => r.test(firstPara));
+    if (hasRoboticOpener) {
+      paragraphs.shift(); // Remove entire first paragraph
+      reply = paragraphs.join('\n\n').trim();
     }
   }
 
-  // Strip "Tentu" / "Tentu saja" opening
-  reply = reply.replace(/^(Tentu,?\s*(saja,?\s*)?)/i, '').trim();
+  // === STEP 2: Remove lines containing forbidden phrases ===
+  const forbiddenLines = [
+    /terdeteksi/i, /ditemukan/i, /pencarian/i, /database/i,
+    /konteks/i, /sumber/i, /referensi/i, /menurut/i,
+    /berdasarkan data/i, /ada\s+\d+\s+jenis/i, /yang cocok adalah/i,
+    /yang paling cocok/i, /resep yang paling/i,
+    /dari data/i, /dari hasil/i, /saya temukan/i, /saya dapat/i,
+    /saya menemukan/i, /saya mencari/i, /saya punya/i,
+    /berikut salah satu/i, /yang bisa kamu/i, /yang bisa kalian/i,
+    /database tidak ada/i, /persis sama/i, /saran masak umum/i,
+    /ini saran/i, /dari informasi yang ada/i, /dari referensi/i,
+    /referensi yang saya/i, /yang saya punya/i,
+  ];
+  const lines = reply.split('\n');
+  const filteredLines = lines.filter(line => {
+    const lowerLine = line.toLowerCase().trim();
+    if (lowerLine.length === 0) return true; // keep blank lines
+    return !forbiddenLines.some(r => r.test(lowerLine));
+  });
+  reply = filteredLines.join('\n').trim();
 
-  // If reply too short, add fallback
-  if (reply.length < 20) {
-    reply = 'Wah, menarik nih! 🍳 Ini resep yang aku temukan untuk kamu. Mau aku jelasin lebih detail? 😊';
-  }
-
-  // Inject conversational opening if needed
-  const firstLine = reply.split('\n')[0].toLowerCase();
-  const needsGreeting = !firstLine.includes('wah') && !firstLine.includes('oke') && !firstLine.includes('halo') && !firstLine.includes('hi') && !firstLine.includes('😊') && !firstLine.includes('🍳');
-  if (needsGreeting && reply.length > 30) {
-    const greetings = [
-      'Wah, enak nih! 🍳\n\n',
-      'Oke, ini resepnya ya! 😊\n\n',
-      'Siap! Ini yang aku rekomendasiin 🔥\n\n',
+  // === STEP 3: If reply too short after stripping, replace with template ===
+  if (reply.length < 100) {
+    const query = userQuery || 'masakan';
+    const templates = [
+      `Wah, ${query} ya? Aku bantu cariin resepnya ya! 🍳\n\nTapi kayaknya databasanya belum lengkap nih. Coba tanya yang lebih spesifik, misalnya "resep ${query} gampang" atau "cara bikin ${query}" 🔥\n\nAtau kamu mau aku carikan resep lain dulu? 😊`,
+      `Hmm, ${query}! Enak tuh 😋\n\nSayangnya aku belum nemu resep yang pas di database. Coba deh tanya dengan kata kunci lain, atau bilang aja "cara membuat ${query}" 🍳\n\nMau coba yang lain? ✨`,
+      `Oke, ${query}! 🔥\n\nAku lagi cariin resepnya tapi belum ketemu yang pas. Coba kamu spesifikasi lagi, misalnya bahan yang kamu punya atau cara masaknya gimana?\n\nAku siap bantu! 😊`,
     ];
-    reply = greetings[Math.floor(Math.random() * greetings.length)] + reply;
+    reply = templates[Math.floor(Math.random() * templates.length)];
+    return reply;
   }
 
-  // Add follow-up question if missing
-  const lastLine = reply.split('\n').pop().toLowerCase();
-  const hasQuestion = lastLine.includes('?') || lastLine.includes('gimana') || lastLine.includes('mau') || lastLine.includes('kamu');
-  if (!hasQuestion && reply.length > 50) {
+  // === STEP 4: Strip numbered list introductions → convert to 🍳 header ===
+  // e.g. "1. Sate Ayam Manis" → "🍳 Sate Ayam Manis"
+  reply = reply.replace(/^\d+\.\s+(.+)$/gm, (match, name) => {
+    // Only convert if it looks like a recipe name (short line, no period at end)
+    if (name.length < 60 && !name.endsWith('.')) {
+      return `🍳 ${name}`;
+    }
+    return match;
+  });
+
+  // === STEP 5: Ensure emoji in section headers ===
+  reply = reply.replace(/^Bahan:/gm, '📋 Bahan:');
+  reply = reply.replace(/^Langkah:/gm, '👨‍🍳 Langkah:');
+  reply = reply.replace(/^Cara membuat:/gm, '👨‍🍳 Cara membuat:');
+  reply = reply.replace(/^Cara:/gm, '👨‍🍳 Cara:');
+  reply = reply.replace(/^Tips:/gm, '💡 Tips:');
+  reply = reply.replace(/^Nama:/gm, '🍳');
+
+  // === STEP 6: Ensure last line is a question with emoji ===
+  const lastLine = reply.split('\n').pop().trim();
+  const hasQuestion = lastLine.includes('?') || /gimana|mau|bisa|ada|mau\s|coba|atau|yuk/i.test(lastLine);
+  const hasEmoji = /[\u{1F300}-\u{1F9FF}]/u.test(lastLine);
+  if (!hasQuestion || !hasEmoji) {
     const followUps = [
       '\n\nMau aku jelasin lebih detail? 😊',
       '\n\nGimana, cocok nggak? Atau mau yang lain? 😋',
       '\n\nAda bumbu tertentu yang kamu suka? 🔥',
+      '\n\nMau coba resep ini? Atau ada yang mau ditanya? ✨',
+      '\n\nKamu mau yang versi pedas atau yang biasa aja? 😊',
     ];
     reply = reply + followUps[Math.floor(Math.random() * followUps.length)];
   }
-
-  // Inject emoji into section headers if missing
-  reply = reply.replace(/^Bahan:/gm, '📋 Bahan:');
-  reply = reply.replace(/^Langkah:/gm, '👨‍🍳 Langkah:');
-  reply = reply.replace(/^Cara membuat:/gm, '👨‍🍳 Cara membuat:');
-  reply = reply.replace(/^Tips:/gm, '💡 Tips:');
 
   return reply;
 }
