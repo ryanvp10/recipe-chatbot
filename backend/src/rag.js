@@ -4,9 +4,9 @@ const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
-const LLM_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const LLM_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
+const MODEL_NAME = 'gemini-2.0-flash';
 const SYSTEM_PROMPT = `<role_definition>
 You are ResepAI, a friendly Indonesian cooking assistant. You chat like a friend — casual, warm, and helpful. You have access to tools to help users find recipes.
 </role_definition>
@@ -194,29 +194,36 @@ async function retrieveContext(query) {
 }
 
 async function callLLM(messages, maxTokens = 1024) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured.');
+    throw new Error('GOOGLE_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
+  // Convert OpenAI message format to Google AI format
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  // Prepend system instruction to first user message
+  if (contents.length > 0 && contents[0].role === 'user') {
+    contents[0].parts[0].text = messages[0].content + '\n\n' + contents[0].parts[0].text;
+  }
+
   let response;
   try {
-    response = await fetch(LLM_URL, {
+    response = await fetch(`${LLM_URL}?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://recipe-chat.netlify.app',
-        'X-Title': 'ResepAI',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL_NAME,
-        messages,
-        temperature: 0.7,
-        max_tokens: maxTokens,
+        contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: maxTokens,
+        },
       }),
       signal: controller.signal,
     });
@@ -241,7 +248,7 @@ async function callLLM(messages, maxTokens = 1024) {
     throw new Error(`Failed to parse LLM response: ${err.message}`);
   }
 
-  const reply = data?.choices?.[0]?.message?.content;
+  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!reply || typeof reply !== 'string') {
     throw new Error('LLM response did not include a valid reply.');
   }
