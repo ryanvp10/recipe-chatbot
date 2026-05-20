@@ -249,35 +249,44 @@ async function callLLM(messages, maxTokens = 1024) {
 
 async function generateRecipeReply(message, history = [], confirmed = false) {
   const safeHistory = sanitizeHistory(history);
+  const msg = message.toLowerCase().trim();
 
-  if (!confirmed) {
-    // Discussion mode: Use template-based responses, don't rely on LLM
-    const msg = message.toLowerCase().trim();
+  // ===== DISCUSSION MODE: Simple chit-chat (no LLM needed) =====
+  // Check if user is just greeting or making small talk
+  const isGreeting = ['halo', 'hi', 'hey', 'p', 'woi', 'wooi', 'hola', 'hello'].some(g => msg === g || msg.startsWith(g + ' '));
+  const isThanks = ['thanks', 'thank you', 'makasih', 'terima kasih', 'thx', 'ty'].some(t => msg.includes(t));
+  const isReady = ['sudah', 'gas', 'skip', 'siap', 'langsung', 'cukup', 'ready', 'yup', 'langsung aja'].some(s => msg === s || msg === s + '!' || msg === s + '.');
 
-    // Check if user is ready for recipe
-    const readySignals = ['sudah', 'gas', 'skip', 'siap', 'langsung', 'cukup', 'ready', 'yup', 'langsung aja'];
-    if (readySignals.some(s => msg === s || msg === s + '!' || msg === s + '.')) {
-      return { reply: 'Oke siap! Aku siapin resepnya ya 🍳', sources: [], lowConfidence: true };
-    }
+  if (isGreeting) {
+    const greetings = [
+      'Halo! 😊 Aku ResepAI, temen ngobrol soal masak. Kamu mau bikin apa hari ini?',
+      'Hai! 🍳 Ada yang bisa dibantu soal masak-masak?',
+      'Halo halo! 😋 Kamu punya bahan apa aja di rumah?',
+    ];
+    return { reply: greetings[Math.floor(Math.random() * greetings.length)], sources: [], lowConfidence: true };
+  }
 
-    // Check if user is listing ingredients
-    const hasIngredients = msg.includes('punya') || msg.includes('ada') || msg.includes('bahan') || msg.includes('punya');
-    const isAskingIdea = msg.includes('ide') || msg.includes('bikin') || msg.includes('masak') || msg.includes('resep');
+  if (isThanks) {
+    return { reply: 'Sama-sama! 😊 Ada lagi yang bisa dibantu?', sources: [], lowConfidence: true };
+  }
 
-    // Template responses based on context
+  if (isReady) {
+    // User is ready — switch to recipe mode (fall through to LLM below)
+  } else if (!isRecipeRequest(msg)) {
+    // Not a recipe request — use template discussion
+    const hasIngredients = msg.includes('punya') || msg.includes('ada') || msg.includes('bahan');
+    const isAskingIdea = msg.includes('ide') || msg.includes('bikin') || msg.includes('masak') || msg.includes('resep') || msg.includes('masakan');
+
     let reply;
     if (hasIngredients || isAskingIdea) {
-      // User has ingredients or asking for ideas — ask follow-up
       const questions = [
         'Wah menarik! 🍳 Kamu mau bikin yang gimana? Goreng, tumis, atau berkuah?',
         'Oke! 😋 Kamu mau yang simpel atau yang agak ribet? Dan buat berapa orang?',
         'Hmm, bisa banget! 🔥 Kamu mau yang pedas, manis, atau gurih?',
         'Siap! 🍳 Kamu punya bumbu apa aja di rumah? Biar aku sesuaikan resepnya.',
-        'Wah enak nih! 😊 Kamu mau yang cepat atau yang slow-cook?',
       ];
       reply = questions[Math.floor(Math.random() * questions.length)];
     } else {
-      // General discussion — ask what they want to cook
       const general = [
         'Wah, aku penasaran! 🍳 Kamu mau bikin apa?',
         'Oke! 😊 Ceritain dong, kamu punya bahan apa aja?',
@@ -285,71 +294,147 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
       ];
       reply = general[Math.floor(Math.random() * general.length)];
     }
-
     log('Discussion mode: template reply');
     return { reply, sources: [], lowConfidence: true };
   }
 
-  // Recipe mode: retrieve context and give full recipe
-  const { context, sources, lowConfidence } = await retrieveContext(message);
+  // ===== RECIPE MODE: LLM with tool calling =====
+  log('Recipe mode: LLM with tools');
 
-  const systemContent = [
-    SYSTEM_PROMPT,
-    `<recipe_mode>
-The user wants a full recipe. Use the reference info below to give ONE best recipe.
-- Pick the SINGLE best match. Do NOT list multiple recipes.
-- Be conversational: "Wah, [resep] enak nih! 🍳"
-- Use the formatting rules from your system prompt.
-- End with a follow-up question.
-- NEVER say "dari referensi", "dari data", "menurut", "berdasarkan".
-</recipe_mode>
-
-<reference_info>
-${context || 'No additional info available.'}
-</reference_info>
-
-<example_good>
-Wah, tahu kecap simpel enak nih! 🍳
-
-Kamu butuh: tahu putih, tempe, bawang merah, bawang putih, kecap manis, cabe, garam, gula.
-
-Caranya: goreng tahu dan tempe sampai kecoklatan. Tumis bawang dan cabe, tambah air, kecap manis, garam, gula. Masukkan tahu dan tempe, masak sampai bumbu meresap. Sajikan! 😋
-
-Mau yang pedas atau yang manis? 🔥
-</example_good>
-
-<example_bad>
-Berikut ide masakan dari konteks resep yang ada: Opor Ayam Kuning. Bahan: ...
-DO NOT REPLY LIKE THIS.
-</example_bad>`,
-  ].join('\n\n');
-
-  const messages = [
-    { role: 'system', content: systemContent },
-    ...safeHistory,
+  // Build initial messages
+  let messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...safeHistory.map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: message.slice(0, MAX_MESSAGE_LENGTH) },
   ];
 
-  log('Generating reply with', sources.length, 'sources. Low confidence:', lowConfidence);
-  let reply = await callLLM(messages);
+  // Tool-calling loop (max 2 iterations: search_recipe → google_search)
+  let reply = '';
+  for (let i = 0; i < 2; i++) {
+    log(`LLM call ${i + 1}`);
+    const llmOutput = await callLLM(messages, i === 0 ? 1024 : 2048);
 
-  // Post-process: strip database-like phrases
+    // Check if LLM wants to use a tool
+    const toolMatch = llmOutput.match(/\{TOOL:\s*(search_recipe|google_search)\}\s*\nquery:\s*(.+?)\s*\{TOOL:\s*end\}/s);
+
+    if (toolMatch) {
+      const toolName = toolMatch[1];
+      const query = toolMatch[2].trim();
+      log(`Tool call: ${toolName}("${query}")`);
+
+      let toolResult;
+      if (toolName === 'search_recipe') {
+        toolResult = await executeSearchRecipe(query);
+      } else if (toolName === 'google_search') {
+        toolResult = await executeGoogleSearch(query);
+      }
+
+      // Add tool result to messages and continue loop
+      messages.push({ role: 'assistant', content: llmOutput });
+      messages.push({ role: 'user', content: `Tool result:\n${toolResult}\n\nNow generate a conversational reply based on this information.` });
+    } else {
+      // No tool call — this is the final reply
+      reply = llmOutput;
+      break;
+    }
+  }
+
+  // If loop ended without reply, get final response
+  if (!reply) {
+    reply = await callLLM(messages, 2048);
+  }
+
+  // Post-process
+  reply = postProcessReply(reply);
+
+  return { reply, sources: [], lowConfidence: false };
+}
+
+// Helper: Detect if message is a recipe request
+function isRecipeRequest(msg) {
+  const recipeKeywords = [
+    'resep', 'masak', 'masakan', 'bikin', 'buat', 'cara', 'tutorial',
+    'recipe', 'cook', 'how to', 'buat cara', 'cara membuat', 'cara bikin',
+    'bahan', 'ingredient', 'bumbu', 'langkah', 'step',
+  ];
+  return recipeKeywords.some(k => msg.includes(k));
+}
+
+// Helper: Execute search_recipe tool (HF embeddings)
+async function executeSearchRecipe(query) {
+  try {
+    const { context } = await retrieveContext(query);
+    if (!context || context.trim().length < 10) {
+      return 'No matching recipes found in database.';
+    }
+    return context;
+  } catch (err) {
+    log('search_recipe failed:', err.message);
+    return 'Search failed. Try google_search instead.';
+  }
+}
+
+// Helper: Execute google_search tool (DuckDuckGo)
+async function executeGoogleSearch(query) {
+  try {
+    const searchUrl = `https://html.duckduckgo.com/html/?q=resep+${encodeURIComponent(query)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return 'Google search failed. Please try again.';
+    }
+
+    const html = await response.text();
+    // Extract result snippets
+    const results = [];
+    const snippetRegex = /<a rel="nofollow" class="result__a"[^>]*>(.*?)<\/a>.*?<td class="result__snippet"[^>]*>(.*?)<\/td>/gs;
+    let match;
+    while ((match = snippetRegex.exec(html)) !== null && results.length < 5) {
+      const title = match[1].replace(/<[^>]+>/g, '').trim();
+      const snippet = match[2].replace(/<[^>]+>/g, '').trim();
+      if (title && snippet) {
+        results.push(`${title}: ${snippet}`);
+      }
+    }
+
+    if (results.length === 0) {
+      return 'No search results found.';
+    }
+    return results.join('\n\n');
+  } catch (err) {
+    log('google_search failed:', err.message);
+    return 'Google search failed. Please try again.';
+  }
+}
+
+// Helper: Post-process LLM reply
+function postProcessReply(reply) {
+  // Strip database-like phrases
   const dbPhrases = [
     'dari resep yang ada', 'dari database', 'dari sumber', 'menurut resep',
     'berdasarkan data', 'saya menemukan', 'saya mencari', 'berdasarkan resep',
     'dari informasi yang ada', 'dari data yang ada', 'menurut data',
-    'dari konteks', 'konteks resep', 'konteks yang ada', 'berdasarkan konteks', 'dari hasil',
-    'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
+    'dari konteks', 'konteks resep', 'konteks yang ada', 'berdasarkan konteks',
+    'dari hasil', 'saya temukan', 'saya dapat', 'pencarian', 'mencari resep',
     'dari referensi', 'referensi yang saya', 'yang saya punya',
     'berikut salah satu', 'berikut ini', 'yang paling dekat',
     'yang cocok adalah', 'yang bisa kamu', 'yang bisa kalian',
     'resep yang paling dekat', 'yang paling cocok',
   ];
+
   const lowerReply = reply.toLowerCase();
   for (const phrase of dbPhrases) {
     const idx = lowerReply.indexOf(phrase);
     if (idx >= 0) {
-      // Find the start of this sentence and remove from there
       let sentenceStart = idx;
       while (sentenceStart > 0 && reply[sentenceStart - 1] !== '\n' && reply[sentenceStart - 1] !== '.') {
         sentenceStart--;
@@ -359,21 +444,15 @@ DO NOT REPLY LIKE THIS.
     }
   }
 
-  // If reply got too short after stripping, use a conversational fallback
+  // Strip "Tentu" / "Tentu saja" opening
+  reply = reply.replace(/^(Tentu,?\s*(saja,?\s*)?)/i, '').trim();
+
+  // If reply too short, add fallback
   if (reply.length < 20) {
-    // Try to extract recipe title from context
-    const titleMatch = context?.match(/^([A-Z][^\n]+)/m);
-    const recipeTitle = titleMatch ? titleMatch[1].trim() : 'resep ini';
-    reply = `Wah, ${recipeTitle} enak nih! 🍳\n\n`;
-    if (context) {
-      // Take first 20 lines of context as recipe body
-      const body = context.split('\n').slice(0, 20).join('\n');
-      reply += body;
-    }
-    reply += '\n\nMau aku jelasin lebih detail? 😊';
+    reply = 'Wah, menarik nih! 🍳 Ini resep yang aku temukan untuk kamu. Mau aku jelasin lebih detail? 😊';
   }
 
-  // Inject conversational opening if reply starts with recipe title (no greeting)
+  // Inject conversational opening if needed
   const firstLine = reply.split('\n')[0].toLowerCase();
   const needsGreeting = !firstLine.includes('wah') && !firstLine.includes('oke') && !firstLine.includes('halo') && !firstLine.includes('hi') && !firstLine.includes('😊') && !firstLine.includes('🍳');
   if (needsGreeting && reply.length > 30) {
@@ -381,25 +460,23 @@ DO NOT REPLY LIKE THIS.
       'Wah, enak nih! 🍳\n\n',
       'Oke, ini resepnya ya! 😊\n\n',
       'Siap! Ini yang aku rekomendasiin 🔥\n\n',
-      'Mantap, ini resep yang pas buat kamu! 😋\n\n',
     ];
     reply = greetings[Math.floor(Math.random() * greetings.length)] + reply;
   }
 
-  // Add follow-up question at the end if not already present
+  // Add follow-up question if missing
   const lastLine = reply.split('\n').pop().toLowerCase();
   const hasQuestion = lastLine.includes('?') || lastLine.includes('gimana') || lastLine.includes('mau') || lastLine.includes('kamu');
   if (!hasQuestion && reply.length > 50) {
     const followUps = [
-      '\n\nKamu mau yang gimana? Yang simpel atau yang lengkap? 😊',
-      '\n\nAda preferensi tertentu? Mau yang kuat atau yang ringan? 🍳',
+      '\n\nMau aku jelasin lebih detail? 😊',
       '\n\nGimana, cocok nggak? Atau mau yang lain? 😋',
-      '\n\nMau aku jelasin lebih detail soal bumbunya? 🔥',
+      '\n\nAda bumbu tertentu yang kamu suka? 🔥',
     ];
     reply = reply + followUps[Math.floor(Math.random() * followUps.length)];
   }
 
-  return { reply, sources, lowConfidence };
+  return reply;
 }
 
 // Load embeddings on module load
