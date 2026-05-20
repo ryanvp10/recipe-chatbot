@@ -225,83 +225,42 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   const safeHistory = sanitizeHistory(history);
 
   if (!confirmed) {
-    // Discussion mode: ALWAYS ask questions, NEVER give recipes
-    const chatPrompt = `<role_definition>
-You are ResepAI, a friendly cooking buddy. The user is in DISCUSSION mode — they want to chat and explore ideas, NOT get a full recipe yet.
-</role_definition>
+    // Discussion mode: Use template-based responses, don't rely on LLM
+    const msg = message.toLowerCase().trim();
 
-<core_directives>
-1. NEVER give recipes. No ingredients, no steps, no recipe names with details.
-2. ONLY ask follow-up questions to understand what the user wants.
-3. Be casual and friendly. Use "kamu". Use emoji: 😊🍳👍🔥
-4. Keep it SHORT — 2-3 sentences max.
-5. NEVER say "Tentu", "Tentu saja", "Berikut", "Dari konteks", "Dari referensi", "menurut", "berdasarkan".
-6. If user says "sudah/gas/skip/siap/langsung aja/cukup/ready", reply: "Oke siap! Aku siapin resepnya ya 🍳"
-</core_directives>
-
-<example_good>
-User: "Aku punya ayam, lada, bawang"
-Bot: "Wah simpel tapi enak nih! 🍗 Kamu mau bikin ayam goreng, bakar, atau yang lain?"
-
-User: "Aku hanya ada tahu dan tempe"
-Bot: "Tahu-tempe classic! 😋 Kamu mau yang goreng, tumis, atau yang berkuah?"
-</example_good>
-
-<example_bad>
-User: "Aku punya tahu dan tempe"
-Bot: "Tentu, ada beberapa pilihan masakan. Dari konteks resep, yang paling dekat adalah Opor Ayam..." ❌
-</example_bad>
-
-<final_enforcement>
-CRITICAL: You are in DISCUSSION mode. NEVER give recipes. ONLY ask follow-up questions. Be casual and short.
-</final_enforcement>`;
-
-    const messages = [
-      { role: 'system', content: chatPrompt },
-      ...safeHistory.map(m => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message.slice(0, MAX_MESSAGE_LENGTH) },
-    ];
-
-    log('Discussion mode: chatting');
-    let reply = await callLLM(messages, 200);
-
-    // Post-process: strip any recipe content or robotic phrases
-    const lowerReply = reply.toLowerCase();
-    const cutPoints = [
-      'berikut resep', 'berikut ini', 'berikut adalah', 'ini resep', 'ini dia resep',
-      '## ', '### ', '**bahan', '**cara', '**langkah', '**steps', '**ingredients', '**tips',
-      'bahan:', 'cara membuat:', 'langkah:', '1. ', '2. ', '3. ',
-      'bahan-bahan:', 'cara pembuatan:', 'langkah-langkah:',
-      'siapkan bahan', 'pertama-tama', 'langkah pertama',
-      'dari konteks', 'dari referensi', 'dari data', 'menurut resep',
-      'yang paling dekat', 'yang cocok adalah', 'ada beberapa pilihan',
-    ];
-    for (const marker of cutPoints) {
-      const idx = lowerReply.indexOf(marker);
-      if (idx >= 0) {
-        reply = reply.substring(0, idx).trim();
-        break;
-      }
+    // Check if user is ready for recipe
+    const readySignals = ['sudah', 'gas', 'skip', 'siap', 'langsung', 'cukup', 'ready', 'yup', 'langsung aja'];
+    if (readySignals.some(s => msg === s || msg === s + '!' || msg === s + '.')) {
+      return { reply: 'Oke siap! Aku siapin resepnya ya 🍳', sources: [], lowConfidence: true };
     }
 
-    // Strip "Tentu" / "Tentu saja" opening
-    reply = reply.replace(/^(Tentu,?\s*(saja,?\s*)?)/i, '').trim();
+    // Check if user is listing ingredients
+    const hasIngredients = msg.includes('punya') || msg.includes('ada') || msg.includes('bahan') || msg.includes('punya');
+    const isAskingIdea = msg.includes('ide') || msg.includes('bikin') || msg.includes('masak') || msg.includes('resep');
 
-    // If reply is too short after cleanup, provide a fallback question
-    if (reply.length < 15) {
-      const fallbacks = [
-        'Wah menarik! 🍳 Kamu mau bikin yang gimana?',
-        'Oke! Coba ceritain lagi, kamu mau masak apa? 😊',
-        'Hmm, aku penasaran — kamu mau bikin apa nih? 🍳',
+    // Template responses based on context
+    let reply;
+    if (hasIngredients || isAskingIdea) {
+      // User has ingredients or asking for ideas — ask follow-up
+      const questions = [
+        'Wah menarik! 🍳 Kamu mau bikin yang gimana? Goreng, tumis, atau berkuah?',
+        'Oke! 😋 Kamu mau yang simpel atau yang agak ribet? Dan buat berapa orang?',
+        'Hmm, bisa banget! 🔥 Kamu mau yang pedas, manis, atau gurih?',
+        'Siap! 🍳 Kamu punya bumbu apa aja di rumah? Biar aku sesuaikan resepnya.',
+        'Wah enak nih! 😊 Kamu mau yang cepat atau yang slow-cook?',
       ];
-      reply = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+      reply = questions[Math.floor(Math.random() * questions.length)];
+    } else {
+      // General discussion — ask what they want to cook
+      const general = [
+        'Wah, aku penasaran! 🍳 Kamu mau bikin apa?',
+        'Oke! 😊 Ceritain dong, kamu punya bahan apa aja?',
+        'Hmm, menarik! 🔥 Kamu mau masak yang gimana?',
+      ];
+      reply = general[Math.floor(Math.random() * general.length)];
     }
 
-    // Fallback if reply is too short after cleanup
-    if (reply.length < 15) {
-      reply = `Oke! ${message} ya? Mau yang gimana? Yang simpel atau yang lengkap? 😊`;
-    }
-
+    log('Discussion mode: template reply');
     return { reply, sources: [], lowConfidence: true };
   }
 
