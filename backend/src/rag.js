@@ -4,9 +4,9 @@ const { loadEmbeddings, search, getEmbeddingCount } = require('./search');
 
 dotenv.config();
 
-const LLM_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const LLM_URL = 'https://api.freemodel.dev/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
-const MODEL_NAME = 'gemini-2.0-flash';
+const MODEL_NAME = 'gpt-5.5';
 const SYSTEM_PROMPT = `Kamu adalah ResepAI, teman ngobrol soal masak-masak. 
 
 ATURAN:
@@ -150,36 +150,27 @@ async function retrieveContext(query) {
 }
 
 async function callLLM(messages, maxTokens = 1024) {
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.FREEMODEL_API_KEY;
   if (!apiKey) {
-    throw new Error('GOOGLE_API_KEY is not configured.');
+    throw new Error('FREEMODEL_API_KEY is not configured.');
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-  // Convert OpenAI message format to Google AI format
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  // Prepend system instruction to first user message
-  if (contents.length > 0 && contents[0].role === 'user') {
-    contents[0].parts[0].text = messages[0].content + '\n\n' + contents[0].parts[0].text;
-  }
-
   let response;
   try {
-    response = await fetch(`${LLM_URL}?key=${apiKey}`, {
+    response = await fetch(LLM_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: maxTokens,
-        },
+        model: MODEL_NAME,
+        messages: messages,
+        max_tokens: maxTokens,
+        temperature: 0.7,
       }),
       signal: controller.signal,
     });
@@ -204,7 +195,7 @@ async function callLLM(messages, maxTokens = 1024) {
     throw new Error(`Failed to parse LLM response: ${err.message}`);
   }
 
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const reply = data?.choices?.[0]?.message?.content;
   if (!reply || typeof reply !== 'string') {
     throw new Error('LLM response did not include a valid reply.');
   }
