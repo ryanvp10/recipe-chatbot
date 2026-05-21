@@ -7,16 +7,24 @@ dotenv.config();
 const LLM_URL = 'https://api.freemodel.dev/v1/chat/completions';
 const HF_EMBEDDING_URL = 'https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/BAAI/bge-small-en-v1.5';
 const MODEL_NAME = 'gpt-5.5';
-const SYSTEM_PROMPT = `Kamu adalah ResepAI, teman ngobrol soal masak-masak. 
+const SYSTEM_PROMPT = `Kamu adalah ResepAI, teman ngobrol soal masak-masak.
 
 ATURAN:
-- Bahasa Indonesia santai, pakai "kamu"
+- Bahasa Indonesia santai, pakai "kamu" dan "aku"
 - Pakai emoji: 😊🍳🔥😋✨👍
-- Langsung jawab, jangan pakai pembuka seperti "Tentu", "Berikut adalah", "Berdasarkan"
 - JANGAN PERNAH sebut: database, konteks, sumber, referensi, data, pencarian, ditemukan
-- JANGAN PERNAH pakai format "ada X jenis yang terdetekti"
-- Langsung kasih resep dengan format:
+- JANGAN pakai pembuka seperti "Tentu", "Berikut adalah", "Berdasarkan"
+- JANGAN pakai format "ada X jenis yang terdeteksi"
 
+ALUR PERCAKAPAN:
+- Baca seluruh riwayat percakapan sebelum menjawab
+- Jika user baru mulai atau belum jelas mau masak apa, tanya 1 pertanyaan klarifikasi dulu
+- Jika user sudah kasih cukup info (bahan + preferensi masakan), kasih 1 resep
+- Jika user menjawab pertanyaan kamu (misal: "pedas", "goreng", "simpel"), gunakan jawaban itu untuk kasih resep yang sesuai
+- Kasih hanya 1 resep terbaik, jangan multiple
+- Selalu akhiri dengan pertanyaan balik pakai emoji
+
+FORMAT RESEP:
 🍳 [Nama]
 
 📋 Bahan:
@@ -27,11 +35,7 @@ ATURAN:
 
 💡 Tips: ...
 
-- Selalu akhiri dengan pertanyaan balik pakai emoji
-- Kalau nggak bisa bantu: "Maaf, aku cuma bisa bantu soal masak-masak 😊"
-- KHUSUS RESEP: Kasih SATU resep terbaik saja, jangan multiple. Format: 🍳 Nama, 📋 Bahan, 👨‍🍳 Cara, 💡 Tips, lalu SATU pertanyaan balik.
-
-Kamu punya alat:
+ALAT:
 {TOOL: search_recipe}
 query: [pencarian]
 {TOOL: end}
@@ -204,76 +208,13 @@ async function callLLM(messages, maxTokens = 1024) {
   return reply;
 }
 
-async function generateRecipeReply(message, history = [], confirmed = false) {
+async function generateRecipeReply(message, history = []) {
   const safeHistory = sanitizeHistory(history);
-  const msg = message.toLowerCase().trim();
 
-  // ===== DISCUSSION MODE: Simple chit-chat (no LLM needed) =====
-  // Check if user is just greeting or making small talk
-  const isGreeting = ['halo', 'hi', 'hey', 'p', 'woi', 'wooi', 'hola', 'hello'].some(g => msg === g || msg.startsWith(g + ' '));
-  const isThanks = ['thanks', 'thank you', 'makasih', 'terima kasih', 'thx', 'ty'].some(t => msg.includes(t));
-  const isReady = ['sudah', 'gas', 'skip', 'siap', 'langsung', 'cukup', 'ready', 'yup', 'langsung aja'].some(s => msg === s || msg === s + '!' || msg === s + '.');
+  // ===== ALL HANDLED BY LLM — pass full conversation history =====
+  log('LLM mode: full conversation context');
 
-  if (isGreeting) {
-    const greetings = [
-      'Halo! 😊 Aku ResepAI, temen ngobrol soal masak. Kamu mau bikin apa hari ini?',
-      'Hai! 🍳 Ada yang bisa dibantu soal masak-masak?',
-      'Halo halo! 😋 Kamu punya bahan apa aja di rumah?',
-    ];
-    return { reply: greetings[Math.floor(Math.random() * greetings.length)], sources: [], lowConfidence: true };
-  }
-
-  if (isThanks) {
-    return { reply: 'Sama-sama! 😊 Ada lagi yang bisa dibantu?', sources: [], lowConfidence: true };
-  }
-
-  if (isReady) {
-    // User is ready — switch to recipe mode (fall through to LLM below)
-  } else if (!isRecipeRequest(msg)) {
-    // Not a recipe request — use template discussion
-    const hasIngredients = msg.includes('punya') || msg.includes('ada') || msg.includes('bahan');
-    const isAskingIdea = msg.includes('ide') || msg.includes('bikin') || msg.includes('masak') || msg.includes('resep') || msg.includes('masakan');
-
-    let reply;
-    if (hasIngredients || isAskingIdea) {
-      const questions = [
-        'Wah menarik! 🍳 Kamu mau bikin yang gimana? Goreng, tumis, atau berkuah?',
-        'Oke! 😋 Kamu mau yang simpel atau yang agak ribet? Dan buat berapa orang?',
-        'Hmm, bisa banget! 🔥 Kamu mau yang pedas, manis, atau gurih?',
-        'Siap! 🍳 Kamu punya bumbu apa aja di rumah? Biar aku sesuaikan resepnya.',
-      ];
-      reply = questions[Math.floor(Math.random() * questions.length)];
-    } else {
-      const general = [
-        'Wah, aku penasaran! 🍳 Kamu mau bikin apa?',
-        'Oke! 😊 Ceritain dong, kamu punya bahan apa aja?',
-        'Hmm, menarik! 🔥 Kamu mau masak yang gimana?',
-      ];
-      reply = general[Math.floor(Math.random() * general.length)];
-    }
-    log('Discussion mode: template reply');
-    return { reply, sources: [], lowConfidence: true };
-  }
-
-  // ===== CHECK: Ask clarifying question if no preference specified =====
-  const userHasPreference = hasUserPreference(message, safeHistory);
-  if (!userHasPreference) {
-    const ingredient = message.match(/(ayam|ikan|tahu|tempe|telur|daging|udang|sayur)/i);
-    const bahan = ingredient ? ingredient[1] : 'bahan';
-    const questions = [
-      `Wah, ${bahan} enak tuh! 🍳 Kamu mau digoreng, ditumis, atau dibikin kuah?`,
-      `Oke! 😋 Kamu suka yang pedas, manis, atau gurih?`,
-      `Bisa banget! 🔥 Kamu mau yang simpel cepat atau yang agak ribet?`,
-    ];
-    const reply = questions[Math.floor(Math.random() * questions.length)];
-    log('Discussion mode: asking clarifying question');
-    return { reply, sources: [], lowConfidence: true };
-  }
-
-  // ===== RECIPE MODE: LLM with tool calling =====
-  log('Recipe mode: LLM with tools');
-
-  // Build initial messages
+  // Build messages: system prompt + full history + current message
   let messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     ...safeHistory.map(m => ({ role: m.role, content: m.content })),
@@ -303,7 +244,7 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
 
       // Add tool result to messages and continue loop
       messages.push({ role: 'assistant', content: llmOutput });
-      messages.push({ role: 'user', content: `Tool result:\n${toolResult}\n\nNow generate a conversational reply based on this information.` });
+      messages.push({ role: 'user', content: `Tool result:\n${toolResult}\n\nSekarang kasih resep dengan format yang sesuai.` });
     } else {
       // No tool call — this is the final reply
       reply = llmOutput;
@@ -320,36 +261,6 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
   reply = postProcessReply(reply, message);
 
   return { reply, sources: [], lowConfidence: false };
-}
-
-// Helper: Detect if message is a recipe request
-function isRecipeRequest(msg) {
-  const recipeKeywords = [
-    'resep', 'masak', 'masakan', 'bikin', 'buat', 'cara', 'tutorial',
-    'recipe', 'cook', 'how to', 'buat cara', 'cara membuat', 'cara bikin',
-    'bahan', 'ingredient', 'bumbu', 'langkah', 'step',
-  ];
-  return recipeKeywords.some(k => msg.includes(k));
-}
-
-// Helper: Check if user has specified a cooking preference
-function hasUserPreference(message, history) {
-  const preferenceKeywords = [
-    'goreng', 'tumis', 'bakar', 'kukus', 'rebus', 'kuah', 'sup', 'soto',
-    'pedas', 'manis', 'gurih', 'asam', 'segar', 'asin',
-    'simpel', 'cepat', 'ribet', 'mudah', 'gampang',
-    'berkuah', 'kering', 'soup', 'stir-fry', 'fried'
-  ];
-  const msg = message.toLowerCase();
-  // Check current message
-  if (preferenceKeywords.some(k => msg.includes(k))) return true;
-  // Check last 3 messages in history
-  const recentHistory = history.slice(-3);
-  for (const h of recentHistory) {
-    const hMsg = h.content.toLowerCase();
-    if (preferenceKeywords.some(k => hMsg.includes(k))) return true;
-  }
-  return false;
 }
 
 // Helper: Execute search_recipe tool (HF embeddings)
