@@ -29,6 +29,7 @@ ATURAN:
 
 - Selalu akhiri dengan pertanyaan balik pakai emoji
 - Kalau nggak bisa bantu: "Maaf, aku cuma bisa bantu soal masak-masak 😊"
+- KHUSUS RESEP: Kasih SATU resep terbaik saja, jangan multiple. Format: 🍳 Nama, 📋 Bahan, 👨‍🍳 Cara, 💡 Tips, lalu SATU pertanyaan balik.
 
 Kamu punya alat:
 {TOOL: search_recipe}
@@ -254,6 +255,21 @@ async function generateRecipeReply(message, history = [], confirmed = false) {
     return { reply, sources: [], lowConfidence: true };
   }
 
+  // ===== CHECK: Ask clarifying question if no preference specified =====
+  const userHasPreference = hasUserPreference(message, safeHistory);
+  if (!userHasPreference) {
+    const ingredient = message.match(/(ayam|ikan|tahu|tempe|telur|daging|udang|sayur)/i);
+    const bahan = ingredient ? ingredient[1] : 'bahan';
+    const questions = [
+      `Wah, ${bahan} enak tuh! 🍳 Kamu mau digoreng, ditumis, atau dibikin kuah?`,
+      `Oke! 😋 Kamu suka yang pedas, manis, atau gurih?`,
+      `Bisa banget! 🔥 Kamu mau yang simpel cepat atau yang agak ribet?`,
+    ];
+    const reply = questions[Math.floor(Math.random() * questions.length)];
+    log('Discussion mode: asking clarifying question');
+    return { reply, sources: [], lowConfidence: true };
+  }
+
   // ===== RECIPE MODE: LLM with tool calling =====
   log('Recipe mode: LLM with tools');
 
@@ -314,6 +330,26 @@ function isRecipeRequest(msg) {
     'bahan', 'ingredient', 'bumbu', 'langkah', 'step',
   ];
   return recipeKeywords.some(k => msg.includes(k));
+}
+
+// Helper: Check if user has specified a cooking preference
+function hasUserPreference(message, history) {
+  const preferenceKeywords = [
+    'goreng', 'tumis', 'bakar', 'kukus', 'rebus', 'kuah', 'sup', 'soto',
+    'pedas', 'manis', 'gurih', 'asam', 'segar', 'asin',
+    'simpel', 'cepat', 'ribet', 'mudah', 'gampang',
+    'berkuah', 'kering', 'soup', 'stir-fry', 'fried'
+  ];
+  const msg = message.toLowerCase();
+  // Check current message
+  if (preferenceKeywords.some(k => msg.includes(k))) return true;
+  // Check last 3 messages in history
+  const recentHistory = history.slice(-3);
+  for (const h of recentHistory) {
+    const hMsg = h.content.toLowerCase();
+    if (preferenceKeywords.some(k => hMsg.includes(k))) return true;
+  }
+  return false;
 }
 
 // Helper: Execute search_recipe tool (HF embeddings)
