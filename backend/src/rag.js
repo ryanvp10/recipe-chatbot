@@ -357,17 +357,7 @@ function postProcessReply(reply, userQuery = '') {
   });
   reply = filteredLines.join('\n').trim();
 
-  // === STEP 3: If reply too short after stripping, replace with template ===
-  if (reply.length < 100) {
-    const query = userQuery || 'masakan';
-    const templates = [
-      `Wah, ${query} ya? Aku bantu cariin resepnya ya! 🍳\n\nTapi kayaknya databasanya belum lengkap nih. Coba tanya yang lebih spesifik, misalnya "resep ${query} gampang" atau "cara bikin ${query}" 🔥\n\nAtau kamu mau aku carikan resep lain dulu? 😊`,
-      `Hmm, ${query}! Enak tuh 😋\n\nSayangnya aku belum nemu resep yang pas di database. Coba deh tanya dengan kata kunci lain, atau bilang aja "cara membuat ${query}" 🍳\n\nMau coba yang lain? ✨`,
-      `Oke, ${query}! 🔥\n\nAku lagi cariin resepnya tapi belum ketemu yang pas. Coba kamu spesifikasi lagi, misalnya bahan yang kamu punya atau cara masaknya gimana?\n\nAku siap bantu! 😊`,
-    ];
-    reply = templates[Math.floor(Math.random() * templates.length)];
-    return reply;
-  }
+  // === STEP 3: (removed — LLM handles all replies) ===
 
   // === STEP 4: Strip numbered list introductions → convert to 🍳 header ===
   // e.g. "1. Sate Ayam Manis" → "🍳 Sate Ayam Manis"
