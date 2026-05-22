@@ -18,12 +18,14 @@ ATURAN:
 
 ALUR PERCAKAPAN:
 - Baca seluruh riwayat percakapan sebelum menjawab
-- Jika user minta PILIHAN/OPTIONS/IDE/REKOMENDASI (contoh: "kasih pilihan", "ada ide apa aja", "rekomendasiin"), kasih 3-5 NAMA RESEP saja dalam format daftar, jangan kasih resep lengkap. Contoh:
-  🍳 Ayam Goreng Bawang
-  🍳 Ayam Goreng Ketumbar
-  🍳 Ayam Goreng Kuning
-  🍳 Ayam Goreng Crispy
-  Lalu tanya: "Mana yang kamu mau? 😊"
+- Jika user minta PILIHAN/OPTIONS/IDE/REKOMENDASI (contoh: "kasih pilihan", "ada ide apa aja", "rekomendasiin"), kasih 3-5 NAMA RESEP saja dalam format daftar, jangan kasih resep lengkap. VARIASI format daftar — kadang pakai emoji berbeda per item, kadang angka, kadang bullet, jangan selalu sama. Contoh variasi:
+  "Ini beberapa sambal yang enak:
+  1. Sambal Bawang 🔥
+  2. Sambal Terasi
+  3. Sambal Tomat 🍅
+  4. Sambal Ijo
+  5. Sambal Korek 🌶️
+  Mana yang kamu mau?"
 - Jika user sudah kasih cukup info (bahan + preferensi) atau memilih salah satu resep, kasih 1 resep LENGKAP
 - Jika user menjawab pertanyaan kamu (misal: "pedas", "goreng", "simpel"), gunakan jawaban itu untuk kasih 1 resep LENGKAP
 - Kasih resep lengkap hanya 1, jangan multiple
@@ -364,15 +366,7 @@ function postProcessReply(reply, userQuery = '') {
 
   // === STEP 3: (removed — LLM handles all replies) ===
 
-  // === STEP 4: Strip numbered list introductions → convert to 🍳 header ===
-  // e.g. "1. Sate Ayam Manis" → "🍳 Sate Ayam Manis"
-  reply = reply.replace(/^\d+\.\s+(.+)$/gm, (match, name) => {
-    // Only convert if it looks like a recipe name (short line, no period at end)
-    if (name.length < 60 && !name.endsWith('.')) {
-      return `🍳 ${name}`;
-    }
-    return match;
-  });
+  // === STEP 4: (removed — LLM handles list formatting naturally) ===
 
   // === STEP 5: Ensure emoji in section headers ===
   reply = reply.replace(/^Bahan:/gm, '📋 Bahan:');
