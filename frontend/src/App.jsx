@@ -335,7 +335,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <div className="app-container">
-        <div style={{ display: 'flex', minHeight: '100vh' }}>
+        <div className="chat-layout">
           <ChatSidebar
             isOpen={sidebarOpen}
             onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -343,7 +343,7 @@ export default function App() {
             onNewChat={handleNewChat}
             activeChatId={activeChatId}
           />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div className="chat-main">
             <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
             <MessageList messages={messages} isLoading={isLoading} />
             <ChatInput onSend={handleSend} disabled={isLoading} />
