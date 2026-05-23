@@ -78,10 +78,10 @@ export default function ChatSidebar({ isOpen, onToggle, onSelect, onNewChat, act
         />
       )}
 
-      {/* Toggle button — fixed, always visible */}
+      {/* Toggle button — visible only on mobile, positioned at far left */}
       <button
         onClick={onToggle}
-        className="fixed top-4 left-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:-translate-y-0.5"
+        className="fixed top-4 left-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:-translate-y-0.5 md:hidden"
         style={{
           background: 'var(--bg-elevated)',
           color: 'var(--text)',
