@@ -84,9 +84,11 @@ export default function ChatSidebar({ isOpen, onToggle, onSelect, onNewChat, act
       <aside
         className={`
           fixed top-0 left-0 z-30 flex h-full w-72 flex-col border-r
-          transition-transform duration-300 ease-in-out
+          transition-all duration-300 ease-in-out
           md:relative md:z-20
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isOpen
+            ? 'translate-x-0 md:w-72'
+            : '-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden md:border-0'}
         `}
         style={{
           background: 'var(--bg-elevated)',
