@@ -88,7 +88,7 @@ export default function ChatSidebar({ isOpen, onToggle, onSelect, onNewChat, act
           md:relative md:z-20
           ${isOpen
             ? 'w-72 translate-x-0'
-            : 'w-0 -translate-x-full md:translate-x-0 md:w-0 md:border-0 md:overflow-hidden'}
+            : 'overflow-hidden w-0 -translate-x-full md:translate-x-0 md:w-0 md:border-0'}
         `}
         style={{
           background: 'var(--bg-elevated)',
