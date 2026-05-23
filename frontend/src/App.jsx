@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import { FiMoon, FiSend, FiSun } from 'react-icons/fi'
-import { GiChefToque } from 'react-icons/gi'
+import { GiChefToque, GiHamburgerMenu } from 'react-icons/gi'
 import ChatSidebar from './components/ChatSidebar'
 import { addMessageToChat, createNewChat, getChatById } from './utils/chatStorage'
 
@@ -67,11 +67,14 @@ function loadSessionId() {
   return id
 }
 
-function Header() {
+function Header({ onToggleSidebar }) {
   const { theme, toggleTheme } = useTheme()
   return (
     <header className="chat-header">
       <div className="header-left">
+        <button className="sidebar-toggle" onClick={onToggleSidebar} aria-label="Toggle sidebar">
+          <GiHamburgerMenu className="icon-sm" />
+        </button>
         <span className="header-logo"><GiChefToque className="icon-sm" /></span>
         <h1 className="header-title">ResepAI</h1>
       </div>
@@ -341,7 +344,7 @@ export default function App() {
             activeChatId={activeChatId}
           />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <Header />
+            <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
             <MessageList messages={messages} isLoading={isLoading} />
             <ChatInput onSend={handleSend} disabled={isLoading} />
           </div>

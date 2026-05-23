@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { FiMenu, FiPlus, FiMessageSquare, FiTrash2, FiX } from 'react-icons/fi'
+import { FiPlus, FiMessageSquare, FiTrash2 } from 'react-icons/fi'
 
 const STORAGE_KEY = 'resepai_chats'
 
@@ -78,20 +78,7 @@ export default function ChatSidebar({ isOpen, onToggle, onSelect, onNewChat, act
         />
       )}
 
-      {/* Toggle button — always visible, positioned at top-left */}
-      <button
-        onClick={onToggle}
-        className="fixed top-4 left-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:-translate-y-0.5"
-        style={{
-          background: 'var(--bg-elevated)',
-          color: 'var(--text)',
-          borderColor: 'var(--border)',
-          boxShadow: '0 10px 24px rgba(15, 23, 42, 0.08)',
-        }}
-        aria-label={isOpen ? 'Tutup sidebar' : 'Buka sidebar'}
-      >
-        {isOpen ? <FiX className="h-5 w-5" /> : <FiMenu className="h-5 w-5" />}
-      </button>
+      {/* Toggle button — removed, now in Header component */}
 
       {/* Sidebar panel */}
       <aside
