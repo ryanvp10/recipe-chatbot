@@ -1,16 +1,22 @@
 # ResepAI — Indonesian Recipe Chatbot
 
-An AI-powered conversational chatbot for Indonesian recipes and cooking assistance, built with LangChain RAG, ChromaDB, and React.
+An AI-powered conversational chatbot for Indonesian recipes. Chat like texting a friend — ask for recipes, get recommendations, swap ingredients, all in casual Bahasa Indonesia.
+
+## Live Demo
+
+- **Frontend**: [recipe-chat.netlify.app](https://recipe-chat.netlify.app/)
+- **API**: [ryanvp10-reseppai-api.hf.space](https://ryanvp10-reseppai-api.hf.space)
 
 ## Features
 
-- 🍳 **Recipe Search** — Find Indonesian recipes by ingredient, dish name, or cooking method
-- 💬 **Conversational** — Multi-turn cooking assistant with memory
-- 🧠 **RAG-Powered** — Retrieves from 10K+ Indonesian recipes dataset
-- 🌐 **Bilingual** — Responds in Bahasa Indonesia or English (auto-detect)
-- 🎨 **Light/Dark Mode** — Toggle between themes
+- 🍳 **Indonesian Recipes** — Ask by ingredient, dish name, cooking method, or mood
+- 💬 **Conversational** — Multi-turn chat with memory, answers clarifying questions
+- 🎯 **Smart Recommendations** — Ask for "pilihan" or "ide" to get a list of recipe names
+- 🔄 **Ingredient Swaps** — Ask to substitute ingredients and get adjusted recipes
+- 🧠 **RAG + LLM** — Retrieves from 10K+ recipe dataset, generates natural responses
+- 🔒 **Food Only** — Strictly stays on topic, only talks about food and cooking
 - 📱 **Responsive** — Works on desktop and mobile
-- 🔓 **Fully Public** — No login required
+- 🔓 **Fully Public** — No login required, no API key needed
 
 ## Tech Stack
 
@@ -18,10 +24,12 @@ An AI-powered conversational chatbot for Indonesian recipes and cooking assistan
 |-------|------------|
 | Frontend | React + Vite |
 | Backend | Express.js (Node.js) |
-| RAG | LangChain.js |
-| Vector DB | ChromaDB (embedded) |
-| LLM | Google Gemini 2.0 Flash (via OpenRouter) |
+| RAG | Custom retrieval + ChromaDB (embedded) |
+| Vector DB | ChromaDB |
+| LLM | GPT-5.5 via freemodel.dev (OpenAI-compatible) |
 | Dataset | [junwatu/indonesian-recipes](https://huggingface.co/datasets/junwatu/indonesian-recipes) |
+| Frontend Host | Netlify |
+| Backend Host | Hugging Face Spaces |
 
 ## Project Structure
 
@@ -31,16 +39,12 @@ recipe-chatbot/
 │   ├── package.json
 │   ├── .env
 │   ├── server.js                  # Express server entry
-│   ├── config/
-│   │   └── index.js               # Config loader
-│   ├── scripts/
-│   │   └── ingest.js              # Dataset → ChromaDB ingestion
-│   ├── routes/
-│   │   └── chat.js                # POST /api/chat
-│   ├── services/
-│   │   ├── rag.js                 # RAG pipeline
-│   │   ├── memory.js              # Conversation memory
-│   │   └── chroma.js              # ChromaDB client
+│   ├── src/
+│   │   ├── server.js              # Server setup + routes
+│   │   ├── rag.js                 # RAG pipeline + LLM call + SYSTEM_PROMPT
+│   │   ├── search.js              # ChromaDB search logic
+│   │   ├── ingest.js              # Dataset → ChromaDB ingestion
+│   │   └── routes/                # API route handlers
 │   └── data/
 │       └── chroma/                # ChromaDB storage (gitignored)
 ├── frontend/
@@ -50,17 +54,9 @@ recipe-chatbot/
 │   └── src/
 │       ├── main.jsx
 │       ├── App.jsx
-│       ├── context/
-│       │   └── ThemeContext.jsx
-│       ├── components/
-│       │   ├── ChatWindow.jsx
-│       │   ├── MessageList.jsx
-│       │   ├── MessageBubble.jsx
-│       │   ├── ChatInput.jsx
-│       │   ├── Header.jsx
-│       │   └── TypingIndicator.jsx
-│       ├── hooks/
-│       │   └── useChat.js
+│       ├── components/            # ChatWindow, MessageList, MessageBubble, ChatInput, Header
+│       ├── lib/                   # API client
+│       ├── utils/                 # Helpers
 │       └── styles/
 │           └── global.css
 └── README.md
@@ -71,7 +67,7 @@ recipe-chatbot/
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
-- OpenRouter API key
+- freemodel.dev API key (or any OpenAI-compatible API)
 
 ### Backend Setup
 
@@ -79,9 +75,9 @@ recipe-chatbot/
 cd backend
 npm install
 cp .env.example .env
-# Edit .env with your OpenRouter API key
-node scripts/ingest.js   # One-time: load dataset into ChromaDB
-npm run dev              # Start server on port 3001
+# Edit .env with your API key
+node src/ingest.js   # One-time: load dataset into ChromaDB
+npm run dev          # Start server on port 3001
 ```
 
 ### Frontend Setup
@@ -89,15 +85,14 @@ npm run dev              # Start server on port 3001
 ```bash
 cd frontend
 npm install
-npm run dev              # Start dev server on port 5173
+npm run dev          # Start dev server on port 5173
 ```
 
 ### Environment Variables
 
 `backend/.env`:
 ```
-OPENROUTER_API_KEY=sk-or-v1-...
-CHROMA_DB_PATH=./data/chroma
+FREEMODEL_API_KEY=your-api-key-here
 PORT=3001
 ```
 
@@ -113,38 +108,65 @@ PORT=3001
 **Request:**
 ```json
 {
-  "message": "Resep ayam goreng?",
-  "sessionId": "abc123",
-  "history": []
+  "messages": [
+    {"role": "user", "content": "resep ayam goreng dong"}
+  ]
 }
 ```
 
 **Response:**
 ```json
 {
-  "reply": "Berikut resep ayam goreng...",
-  "sources": [
-    { "title": "Ayam Goreng Kuning", "score": 0.92 }
-  ],
-  "sessionId": "abc123"
+  "reply": "Ini resep Ayam Goreng Bawang yang enak banget! 🍳\n\n📋 Bahan:\n- 1 ekor ayam...\n\n👨‍🍳 Cara membuat:\n1. Potong ayam..."
 }
+```
+
+## Conversation Flow
+
+```
+User: "aku mau masak ayam"
+Bot:  "Ini beberapa pilihan masakan ayam:
+       1. Ayam Goreng Bawang 🔥
+       2. Ayam Goreng Kuning
+       3. Ayam Bakar Madu 🍯
+       4. Ayam Goreng Crispy
+       5. Ayam Suwir Pedas 🌶️
+       Mana yang kamu mau?"
+
+User: "ayam goreng bawang"
+Bot:  [Full recipe with 📋 Bahan and 👨‍🍳 Cara membuat]
+
+User: "ganti pakai daging sapi bisa?"
+Bot:  [Modified recipe with beef substitution]
+
+User: "makasih ya!"
+Bot:  "Sama-sama! Semoga enak masaknya 😊🍽️"
 ```
 
 ## Architecture
 
 ```
-[React UI] ←→ [Express API] ←→ [LangChain RAG]
+[React UI] ←→ [Express API] ←→ [RAG Pipeline]
                                    ↕
-                               [ChromaDB]
+                               [ChromaDB] ← 10K+ Indonesian recipes
                                    ↕
-                            [OpenRouter LLM]
+                            [GPT-5.5 via freemodel.dev]
 ```
 
 1. User sends message
-2. Backend embeds query → searches ChromaDB (top 5 recipes)
-3. If recipes found: inject as context → generate response
-4. If no recipes: LLM answers with strict cooking-only fallback
-5. Conversation memory maintained per session
+2. Backend embeds query → searches ChromaDB (top 5 matching recipes)
+3. Retrieved recipes injected as context into SYSTEM_PROMPT
+4. GPT-5.5 generates casual, emoji-filled Indonesian response
+5. Post-processing strips robotic phrases and forbidden words
+6. Conversation history maintained per session for multi-turn chat
+
+## Key Design Decisions
+
+- **No templates** — All responses generated by LLM, no hardcoded reply templates
+- **Food-only scope** — SYSTEM_PROMPT strictly limits bot to cooking/food topics
+- **Casual tone** — Uses "aku/kamu", emojis, natural Indonesian chat style
+- **Varied formatting** — Lists use mixed formats (numbers, emojis, bullets) to feel natural
+- **No login** — Fully public, sessions managed client-side
 
 ## License
 
