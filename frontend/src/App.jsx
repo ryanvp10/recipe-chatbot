@@ -225,7 +225,7 @@ export default function App() {
   const [messages, setMessages] = useState(loadMessages)
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId] = useState(loadSessionId)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeChatId, setActiveChatId] = useState(null)
 
   useEffect(() => {
