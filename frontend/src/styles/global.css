@@ -77,8 +77,7 @@ button {
 }
 
 .chat-header {
-  @apply fixed top-0 right-0 z-20 flex items-center justify-between border-b px-4 py-4 backdrop-blur md:px-6;
-  left: 0;
+  @apply sticky top-0 right-0 z-20 flex items-center justify-between border-b px-4 py-4 backdrop-blur md:px-6;
   background: var(--surface);
   border-color: var(--border);
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
@@ -127,7 +126,7 @@ button {
 }
 
 .message-list {
-  @apply mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-4 pb-36 pt-24 md:px-6 md:pb-40 md:pt-28;
+  @apply flex w-full max-w-5xl flex-1 flex-col gap-4 px-4 pb-4 pt-4 mx-auto md:px-6;
 }
 
 .welcome-screen {
@@ -272,21 +271,13 @@ button {
 }
 
 .chat-input-area {
-  @apply fixed right-0 bottom-0 z-20 border-t px-4 py-4 backdrop-blur md:px-6;
-  left: 0;
+  @apply sticky bottom-0 right-0 z-20 border-t px-4 py-4 backdrop-blur md:px-6;
   background: var(--surface);
   border-color: var(--border);
 }
 
-@media (min-width: 768px) {
-  .chat-header,
-  .chat-input-area {
-    left: 18rem;
-  }
-}
-
 .input-wrapper {
-  @apply mx-auto flex w-full max-w-5xl items-end gap-3 rounded-[1.75rem] border p-3;
+  @apply flex w-full max-w-5xl items-end gap-3 rounded-[1.75rem] border p-3;
   background: var(--surface-strong);
   border-color: var(--border);
   box-shadow: var(--shadow);
